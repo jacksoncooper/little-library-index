@@ -2,9 +2,10 @@
 
 -- 🫳 Dropping for fun and profit, for debugging! 🫳 --
 DROP TABLE IF EXISTS libraries;
+DROP TABLE IF EXISTS osm_element_ids;
 
-DROP TYPE IF EXISTS osm_element_type;
 DROP DOMAIN IF EXISTS url_id;
+DROP TYPE IF EXISTS osm_element_type;
 
 DROP EXTENSION IF EXISTS postgis;
 -- 🫳 ✨ 🫳 --
@@ -24,18 +25,20 @@ CREATE TYPE osm_element_type
 CREATE DOMAIN url_id
   AS char(6)
   CHECK (VALUE ~ '^[a-z0-9]+$');
- 
+
+CREATE TABLE osm_element_ids (
+    id           serial PRIMARY KEY,
+    element_id   bigint NOT NULL,
+    element_type osm_element_type NOT NULL
+);
+
 CREATE TABLE libraries (
   id                   serial PRIMARY KEY,
   url_id               url_id UNIQUE NOT NULL,
-  osm_id               bigint,
-  osm_type             osm_element_type,
+  osm_element_id       integer REFERENCES osm_element_ids (id),
   created_at           timestamp with time zone NOT NULL,
   location             geography(Point, 4326) NOT NULL,
   title                text,
   description          text,
-  accessibility_notes  text,
- 
-  CONSTRAINT both_osm_ids
-    CHECK ((osm_id IS NOT NULL) AND (osm_type IS NOT NULL))
+  accessibility_notes  text
 );
