@@ -24,6 +24,9 @@
 - [ ] Session mangement strategy?
 - [ ] Server-side drafts of new libraries, so user progress is saved automatically. Independent of authentication.
 - [ ] Deduplication of books without ISBNs, like zines.
+- [ ] Localization strategy? ISO 639-2 language code for each book.
+- [ ] Self host cover images for books without ISBN codes. Especially for things like zines.
+- [ ] ISO 639.3 language support.
 
 ### v3
 

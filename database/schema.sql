@@ -48,6 +48,19 @@ CREATE TABLE books (
   created_at      timestamp with time zone NOT NULL,
   title           text NOT NULL,
   author          text,
+  -- Open Library languages are from MARC.
+  --
+  --   https://openlibrary.org/languages.json
+  --   https://www.loc.gov/marc/languages/language_code.html
+  --
+  -- We want ISO 639.2 with the goal of moving to ISO 639.3. ISO 639.2 gives more
+  -- than one code for 21 languages for bibliographic ("B") and terminology
+  -- ("T") purposes. Fortunately for us, all MARC language codes are "B" ISO
+  -- 639.2 codes.
+  --
+  --  https://www.loc.gov/standards/iso639-2/php/code_list.php
+  --
+  iso_639_2       text,
   publisher       text,
   publish_date    text,
   description     text,
