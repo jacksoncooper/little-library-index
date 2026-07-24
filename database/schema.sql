@@ -83,3 +83,24 @@ CREATE TABLE isbn_to_book (
   isbn_id integer PRIMARY KEY REFERENCES isbns (id),
   book_id integer REFERENCES books (id) NOT NULL
 );
+
+-- Transactions! --
+
+CREATE TYPE inventory_event_type
+  AS ENUM (
+    'check_in',
+    'check_out',
+    'reconcile'
+  );
+
+CREATE TABLE inventory_events (
+  id          serial PRIMARY KEY,
+  library_id  integer REFERENCES libraries (id) NOT NULL,
+  book_id     integer REFERENCES books (id) NOT NULL,
+  type        inventory_event_type NOT NULL,
+  entered_at  timestamp with time zone NOT NULL,
+  delta       integer NOT NULL
+);
+
+CREATE INDEX inventory_events_by_library_id_and_book_id
+  ON inventory_events (library_id, book_id);
