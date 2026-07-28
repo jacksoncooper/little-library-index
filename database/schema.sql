@@ -1,5 +1,19 @@
 CREATE EXTENSION postgis;
 
+-- Users! --
+
+CREATE DOMAIN handle
+  AS character varying(32)
+  CHECK (
+    VALUE ~ '^[\w.]+$'
+    AND VALUE IS NFC NORMALIZED
+  );
+
+CREATE TABLE users (
+  id serial PRIMARY KEY,
+  handle handle UNIQUE NOT NULL
+);
+
 -- Libraries! --
 
 CREATE TYPE osm_element_type
@@ -24,28 +38,30 @@ CREATE TABLE osm_element_ids (
 
 CREATE TABLE libraries (
   id                   serial PRIMARY KEY,
-  url_id               url_id UNIQUE NOT NULL,
-  osm_element_id       integer REFERENCES osm_element_ids (id),
   created_at           timestamp with time zone NOT NULL,
+  created_by           integer REFERENCES users (id) NOT NULL,
+  url_id               url_id UNIQUE NOT NULL,
   location             geography(Point, 4326) NOT NULL,
   title                text,
   description          text,
-  accessibility_notes  text
+  accessibility_notes  text,
+  osm_element_id       integer REFERENCES osm_element_ids (id)
 );
 
 -- Books! --
 
 CREATE TABLE open_library_ids (
   id         serial PRIMARY KEY,
-  work_id    text UNIQUE NOT NULL,
+  work_id    text NOT NULL,
   edition_id text UNIQUE NOT NULL,
-  author_id  text UNIQUE
+  author_id  text
 );
 
 CREATE TABLE books (
   id              serial PRIMARY KEY,
   url_id          url_id UNIQUE NOT NULL,
   created_at      timestamp with time zone NOT NULL,
+  created_by      integer REFERENCES users (id) NOT NULL,
   title           text NOT NULL,
   author          text,
   -- Open Library languages are from MARC.
@@ -95,12 +111,18 @@ CREATE TYPE inventory_event_type
 
 CREATE TABLE inventory_events (
   id          serial PRIMARY KEY,
+  entered_at  timestamp with time zone NOT NULL,
+  entered_by  integer REFERENCES users (id) NOT NULL,
+  type        inventory_event_type NOT NULL,
   library_id  integer REFERENCES libraries (id) NOT NULL,
   book_id     integer REFERENCES books (id) NOT NULL,
-  type        inventory_event_type NOT NULL,
-  entered_at  timestamp with time zone NOT NULL,
   delta       integer NOT NULL
 );
 
+-- Because this index is built on a two-tuple, it allows us to efficiently
+-- select all inventory events for a given library, and not just for a given
+-- library and book pair. This works because the library comes first in the
+-- two-tuple, and comparisons between these tuples are broken first by the
+-- libraries being compared.
 CREATE INDEX inventory_events_by_library_id_and_book_id
   ON inventory_events (library_id, book_id);
