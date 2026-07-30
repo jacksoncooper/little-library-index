@@ -1,17 +1,17 @@
+import { SQL } from 'bun';
+
 import {
-    QueryShapeError,
     Row,
     WithPrimaryKey,
     assertColumn,
     assertRowCount,
-    db
-} from './connection';
+} from './types';
 
 type User = {
     handle: string
 };
 
-async function createUser(handle: string): Promise<number> {
+async function createUser(db: SQL, handle: string): Promise<number> {
     const rows = await db<Row[]>`
         INSERT INTO users ( handle )
         VALUES (${handle})
@@ -23,6 +23,10 @@ async function createUser(handle: string): Promise<number> {
     return column.id;
 }
 
-function readUser(handle: string): Promise< WithPrimaryKey< User > > {
+// Used to handle a request for a user profile. For example,
+//
+//   https://littlelibraryindex.com/user/jackson
+//
+function readUser(db: SQL, handle: string): Promise< WithPrimaryKey< User > > {
     return Promise.resolve( { id: 1, handle: 'jackson' } );
 }
