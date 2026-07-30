@@ -49,6 +49,7 @@ export function assertColumn<
     }
 
     const column = row[property];
+<<<<<<< HEAD
     const message =
         `expected row to have column '${property}' of type ${expectedType}`;
 
@@ -59,6 +60,21 @@ export function assertColumn<
     } else {
         if (typeof column !== expectedType) {
             throw new QueryShapeError(message);
+=======
+    if (isConstructor(expectedType)) {
+        if (!(column instanceof expectedType)) {
+            throw new QueryShapeError(
+                `expected row to have column '${property}' of type ` +
+                `${expectedType}`
+            );
+        } 
+    } else {
+        if (typeof column !== expectedType) {
+            throw new QueryShapeError(
+                `expected row to have column '${property}' of type `
+                + `${expectedType}`
+            );
+>>>>>>> 52a65b6d5d68f1f7fc48e66d70725eba41c9d45b
         }
     }
 }
