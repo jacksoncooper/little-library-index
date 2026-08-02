@@ -57,19 +57,19 @@ async function writeUsers(db: SQL): Promise<Row[]> {
     `;
 }
 
-test('retrieve user by handle', async () => {
+test('retrieve user by handle', () =>
     withDatabaseConnection( testConnection(), async db => {
         await writeUsers(db);
         const user = await readUser(db, 'lovelace');
         expect(user).not.toBeNull();
         expect(user!.handle).toBe('lovelace');
-    });
-});
+    })
+);
 
-test('try to retrieve nonexistent user', async () => {
+test('try to retrieve nonexistent user', () =>
     withDatabaseConnection( testConnection(), async db => {
         await writeUsers(db);
         const user = await readUser(db, 'skiena');
         expect(user).toBeNull();
-    });
-});
+    })
+);
