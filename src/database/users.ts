@@ -27,7 +27,7 @@ async function createUser(db: SQL, handle: string): Promise<number> {
 //
 //   https://littlelibraryindex.com/user/jackson
 //
-async function readUser(
+export async function readUser(
     db: SQL,
     handle: string
 ): Promise<WithPrimaryKey<User> | null> {

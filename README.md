@@ -31,7 +31,13 @@
 ### v3
 
 - [ ] Users can acquire a code, or purchase a sticker with a barcode, that allows a book to be tracked through the lending library network. Maybe they can participate in a conversation with only folks who have encountered that particular book.
+- [ ] Users gain points for being librarians. My friend suggested that maybe they can decorate the virtual representation of the lending libraries, e.g., with stickers. Or maybe, you unlock the ability to get notified if there's a particular book deposited.
 - [ ] Profit!
+
+## Housekeeping.
+
+- [ ] You need a linter, man.
+- [ ] You need a reproducible Postgres environment. Learn containerization, man.
 
 ## `bun create hono@latest`
 

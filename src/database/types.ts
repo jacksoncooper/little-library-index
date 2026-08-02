@@ -42,7 +42,7 @@ export function assertColumn<
     row: Row,
     property: K,
     expectedType: T,
-): asserts row is Row & Record< K, TypeOfType<T>> {
+): asserts row is Row & Record<K, TypeOfType<T>> {
     if (!row.hasOwnProperty(property)) {
         throw new QueryShapeError(
             `expected row to have property '${property}'`);

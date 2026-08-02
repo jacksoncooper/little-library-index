@@ -2,7 +2,7 @@
   "name": "little-library-index",
   "scripts": {
     "dev": "bun run --hot src/index.ts",
-    "clean_slate": "bash database/clean_slate.sh"
+    "clean-slate": "bash database/clean-slate.sh"
   },
   "dependencies": {
     "hono": "^4.12.27"
