@@ -11,11 +11,11 @@ type User = {
     handle: string
 };
 
-async function createUser(db: SQL, handle: string): Promise<number> {
+export async function writeUser(db: SQL, handle: string): Promise<number> {
     const rows = await db<Row[]>`
         INSERT INTO users (handle)
         VALUES (${handle})
-        RETURNING id
+        RETURNING id;
     `;
     assertRowCount(rows, 1); // Only one row was inserted.
     const row = rows[0];
@@ -33,7 +33,7 @@ export async function readUser(
 ): Promise<WithPrimaryKey<User> | null> {
     const rows = await db<Row[]>`
         SELECT id, handle FROM users
-        WHERE handle = ${handle}
+        WHERE handle = ${handle};
     `;
     if (rows.length < 1) {
         return null;

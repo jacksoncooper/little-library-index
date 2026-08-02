@@ -1,8 +1,8 @@
-import { $, SQL } from 'bun';
-import { afterEach, beforeEach, expect, test } from 'bun:test';
+import { SQL } from 'bun';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { Row } from '../src/database/types';
-import { readUser } from '../src/database/users';
+import { Row, assertColumn } from '../src/database/types';
+import { readUser, writeUser } from '../src/database/users';
 
 import {
     createTestDatabase,
@@ -29,23 +29,64 @@ async function writeUsers(db: SQL): Promise<Row[]> {
     // until the promise is awaited.
     return db<Row[]>`
         INSERT INTO users (handle)
-        VALUES ('turing'), ('lovelace'), ('sedgewick')
+        VALUES ('turing'), ('lovelace'), ('sedgewick');
     `;
 }
 
-test('retrieve user by handle', () =>
-    withDatabaseConnection( testConnection(), async db => {
-        await writeUsers(db);
-        const user = await readUser(db, 'lovelace');
-        expect(user).not.toBeNull();
-        expect(user!.handle).toBe('lovelace');
-    })
-);
+async function readUsers(db: SQL): Promise<Row[]> {
+    return db<Row[]>`
+        SELECT * from users;
+    `;
+}
 
-test('try to retrieve nonexistent user', () =>
-    withDatabaseConnection( testConnection(), async db => {
-        await writeUsers(db);
-        const user = await readUser(db, 'skiena');
-        expect(user).toBeNull();
-    })
-);
+describe('readUser()', () => {
+    test('retrieve user by handle', () =>
+        withDatabaseConnection(testConnection(), async db => {
+            await writeUsers(db);
+            const user = await readUser(db, 'lovelace');
+            expect(user).not.toBeNull();
+            expect(user!.handle).toBe('lovelace');
+        })
+    );
+
+    test('try to retrieve nonexistent user', () =>
+        withDatabaseConnection(testConnection(), async db => {
+            await writeUsers(db);
+            const user = await readUser(db, 'skiena');
+            expect(user).toBeNull();
+        })
+    );
+});
+
+describe('writeUser()', () => {
+    test('insert a new user', () => {
+        withDatabaseConnection(testConnection(), async db => {
+            const turingId = await writeUser(db, 'turing');
+            const lovelaceId = await writeUser(db, 'lovelace');
+            expect(turingId).not.toBe(lovelaceId);
+
+            const users = await readUsers(db);
+
+            const turing = users[0];
+            assertColumn(turing, 'id', 'number');
+            assertColumn(turing, 'handle', 'string');
+            expect(turing.id).toBe(turingId);
+            expect(turing.handle).toBe('turing');
+            
+            const lovelace = users[1];
+            assertColumn(lovelace, 'id', 'number');
+            assertColumn(lovelace, 'handle', 'string');
+            expect(lovelace.id).toBe(lovelaceId);
+            expect(lovelace.handle).toBe('lovelace');
+        })
+    });
+
+    test('try to insert an existing user', () => {
+        withDatabaseConnection(testConnection(), async db => {
+            await writeUser(db, 'turing');
+            expect(writeUser(db, 'turing'))
+                .rejects
+                .toBeInstanceOf(SQL.PostgresError);
+        });
+    });
+});

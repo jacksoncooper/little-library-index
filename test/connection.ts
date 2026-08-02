@@ -1,4 +1,4 @@
-import { SQL } from 'bun';
+import { $, SQL } from 'bun';
 
 export const testDatabaseName = 'little-library-index-test';
 
@@ -18,11 +18,13 @@ export async function createTestDatabase(name: string): Promise<$.ShellOutput> {
     // TODO: These arguments to `createdb` may not be portable. They're
     // definitely not potable.
     return ($`\
+        dropdb --if-exists ${name}
         createdb \
             --locale-provider=icu --icu-locale=und --template=template0 \
             ${name}
-        psql ${name} --quiet --file=../database/schema.sql`
+        psql ${name} --file=../database/schema.sql`
         .cwd(import.meta.dir)
+        .quiet()
     );
 }
 
@@ -33,9 +35,7 @@ export async function deleteTestDatabase(name: string): Promise<$.ShellOutput> {
 export function withDatabaseConnection<T>(
     db: SQL, query: (db: SQL) => Promise<T>
 ): Promise<T> {
-    return query(db).then(
-        result => result 
-    ).finally(
+    return query(db).finally(
         () => db.close()
     )
 }
