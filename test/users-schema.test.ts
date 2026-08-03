@@ -86,7 +86,9 @@ describe('writeUser()', () => {
             await writeUser(db, 'turing');
             expect(writeUser(db, 'turing'))
                 .rejects
-                .toBeInstanceOf(SQL.PostgresError);
+                // TODO: Can use `errno` instead to avoid the scenario where
+                // the error message changes.
+                .toThrow('duplicate key value violates unique constraint');
         });
     });
 });
