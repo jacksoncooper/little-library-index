@@ -7,6 +7,7 @@ import { readUser, writeUser } from '../src/database/users';
 import {
     createTestDatabase,
     deleteTestDatabase,
+    rejectsWithPostgresError,
     testConnection,
     testDatabaseName,
     withDatabaseConnection
@@ -59,7 +60,7 @@ describe('readUser()', () => {
 });
 
 describe('writeUser()', () => {
-    test('insert a new user', () => {
+    test('insert a new user', () =>
         withDatabaseConnection(testConnection(), async db => {
             const turingId = await writeUser(db, 'turing');
             const lovelaceId = await writeUser(db, 'lovelace');
@@ -79,16 +80,14 @@ describe('writeUser()', () => {
             expect(lovelace.id).toBe(lovelaceId);
             expect(lovelace.handle).toBe('lovelace');
         })
-    });
+    );
 
-    test('try to insert an existing user', () => {
+    test('try to insert an existing user', () =>
         withDatabaseConnection(testConnection(), async db => {
             await writeUser(db, 'turing');
-            expect(writeUser(db, 'turing'))
-                .rejects
-                // TODO: Can use `errno` instead to avoid the scenario where
-                // the error message changes.
-                .toThrow('duplicate key value violates unique constraint');
-        });
-    });
+            await rejectsWithPostgresError(
+                writeUser(db, 'turing'),
+                '23505');
+        })
+    )
 });

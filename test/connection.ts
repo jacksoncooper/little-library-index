@@ -1,4 +1,5 @@
 import { $, SQL } from 'bun';
+import { expect } from 'bun:test';
 
 export const testDatabaseName = 'little-library-index-test';
 
@@ -38,4 +39,21 @@ export function withDatabaseConnection<T>(
     return query(db).finally(
         () => db.close()
     )
+}
+
+export function rejectsWithPostgresError<T>(
+    query: Promise<T>,
+    // https://www.postgresql.org/docs/current/errcodes-appendix.html
+    errno: string
+): Promise<string> {
+    return query.then(
+        _ => {
+            expect().fail('query not expected to fulfill');
+            expect.unreachable();
+        },
+        e => {
+            expect(e).toBeInstanceOf(SQL.PostgresError);
+            expect(e.errno).toBe(errno);
+            return errno;
+        });
 }
