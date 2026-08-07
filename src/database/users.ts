@@ -7,14 +7,14 @@ import {
     assertRowCount,
 } from './types';
 
-type User = {
+export type User = {
     handle: string
 };
 
-export async function writeUser(db: SQL, handle: string): Promise<number> {
-    const rows = await db<Row[]>`
+export async function writeUser(connection: SQL, user: User): Promise<number> {
+    const rows = await connection<Row[]>`
         INSERT INTO users (handle)
-        VALUES (${handle})
+        VALUES (${user.handle})
         RETURNING id;
     `;
     assertRowCount(rows, 1); // Only one row was inserted.
@@ -28,10 +28,10 @@ export async function writeUser(db: SQL, handle: string): Promise<number> {
 //   https://littlelibraryindex.com/user/jackson
 //
 export async function readUser(
-    db: SQL,
+    connection: SQL,
     handle: string
 ): Promise<WithPrimaryKey<User> | null> {
-    const rows = await db<Row[]>`
+    const rows = await connection<Row[]>`
         SELECT id, handle FROM users
         WHERE handle = ${handle};
     `;

@@ -32,8 +32,8 @@ CREATE DOMAIN url_id
 
 CREATE TABLE osm_element_ids (
   id           serial PRIMARY KEY,
-  element_id   bigint NOT NULL,
-  element_type osm_element_type NOT NULL
+  element_type osm_element_type NOT NULL,
+  element_id   bigint NOT NULL
 );
 
 CREATE TABLE libraries (
@@ -110,13 +110,17 @@ CREATE TYPE inventory_event_type
   );
 
 CREATE TABLE inventory_events (
-  id          serial PRIMARY KEY,
-  entered_at  timestamp with time zone NOT NULL,
-  entered_by  integer REFERENCES users (id) NOT NULL,
-  type        inventory_event_type NOT NULL,
-  library_id  integer REFERENCES libraries (id) NOT NULL,
-  book_id     integer REFERENCES books (id) NOT NULL,
-  delta       integer NOT NULL
+  id             serial PRIMARY KEY,
+  entered_at     timestamp with time zone NOT NULL,
+  entered_by     integer REFERENCES users (id) NOT NULL,
+  type           inventory_event_type NOT NULL,
+  library_id     integer REFERENCES libraries (id) NOT NULL,
+  book_id        integer REFERENCES books (id) NOT NULL,
+  delta          integer NOT NULL,
+  -- Whether the user wants the transaction to be visible in the live feed.
+  visible        boolean NOT NULL default true,
+  -- Whether the user wants their handle to be visible in the transaction.
+  handle_visible boolean NOT NULL default false
 );
 
 -- Because this index is built on a two-tuple, it allows us to efficiently

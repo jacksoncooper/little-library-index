@@ -25,17 +25,17 @@ afterEach(async () =>
     deleteTestDatabase(testDatabaseName)
 );
 
-async function writeUsers(db: SQL): Promise<Row[]> {
+async function writeUsers(connection: SQL): Promise<Row[]> {
     // Similar to Promises constructed with `$`, the query will not execute
     // until the promise is awaited.
-    return db<Row[]>`
+    return connection<Row[]>`
         INSERT INTO users (handle)
         VALUES ('turing'), ('lovelace'), ('sedgewick');
     `;
 }
 
-async function readUsers(db: SQL): Promise<Row[]> {
-    return db<Row[]>`
+async function readUsers(connection: SQL): Promise<Row[]> {
+    return connection<Row[]>`
         SELECT * from users;
     `;
 }
@@ -62,8 +62,8 @@ describe('readUser()', () => {
 describe('writeUser()', () => {
     test('insert a new user', () =>
         withDatabaseConnection(testConnection(), async db => {
-            const turingId = await writeUser(db, 'turing');
-            const lovelaceId = await writeUser(db, 'lovelace');
+            const turingId = await writeUser(db, {handle: 'turing'});
+            const lovelaceId = await writeUser(db, {handle: 'lovelace'});
             expect(turingId).not.toBe(lovelaceId);
 
             const users = await readUsers(db);
@@ -84,9 +84,9 @@ describe('writeUser()', () => {
 
     test('try to insert an existing user', () =>
         withDatabaseConnection(testConnection(), async db => {
-            await writeUser(db, 'turing');
+            await writeUser(db, {handle: 'turing'});
             await rejectsWithPostgresError(
-                writeUser(db, 'turing'),
+                writeUser(db, {handle: 'turing'}),
                 '23505');
         })
     )

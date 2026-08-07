@@ -11,8 +11,10 @@
 - [ ] Users can add lending libraries.
 - [ ] Users can mark books in lending libraries as "here" or "not here". ISBN input is manual.
 - [ ] User transactions will be associated with a "username", but any user can associate a transaction with any username. This username will form the backbone of an identity table for v2.
-- [ ] `added_by` is a column of the `libraries` table that points to a row in the `users` table.
+- [ ] `created_by` is a column of the `libraries` table that points to a row in the `users` table.
 - [ ] Integration with Open Library for a cover image, title, and author.
+- [ ] Users can search for libraries near a location, or their current location, and can view the profile of a library.
+- [ ] The minimal scope for v1 is 3 pages: (1) the home page, with a map showing libraries near you or, failing location services, a default view. Below, a list of those same libraries. Clicking on any takes you to the page for that library. To the right, a live feed of the recent transactions in that bounding box. (2) The library page, displaying its books and the UI to check in, check out, and reconcile. (3) The profile page.
 
 ### v2
 
@@ -27,6 +29,7 @@
 - [ ] Localization strategy? ISO 639-2 language code for each book.
 - [ ] Self host cover images for books without ISBN codes. Especially for things like zines.
 - [ ] ISO 639.3 language support.
+- [ ] Support libraries that aren't geometric points, like OSM ways.
 
 ### v3
 
