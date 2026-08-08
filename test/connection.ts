@@ -16,8 +16,7 @@ export async function createTestDatabase(name: string): Promise<$.ShellOutput> {
     //
     //   By default, a non-zero exit code throws an error.
 
-    // TODO: These arguments to `createdb` may not be portable. They're
-    // definitely not potable.
+    // TODO: These arguments to `createdb` may not be portable.
     return ($`\
         dropdb --if-exists ${name}
         createdb \
