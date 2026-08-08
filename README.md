@@ -2,6 +2,8 @@
 
 An open source, free index of [lending libraries](https://en.wikipedia.org/wiki/Lending_library), maintained by its users. I'm interested in the kinds of giving economies described by Robin Wall Kimmerer in their book _The Serviceberry_, and my hope is that an accessible index will encourage more people to participate in lending libraries in our communities. If I can see that an interesting zine or novel was deposited at a library near me, for example, I'm more likely to interact with this awesome distributed library.
 
+No affiliation with the 501(c)(3) nonprofit [Little Free Library](https://littlefreelibrary.org). The term _little library_ is used here as a colloqualism for the lending library.
+
 ## Project status
 
 - [x] A v1 Postgres schema
