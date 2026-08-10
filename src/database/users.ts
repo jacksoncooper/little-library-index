@@ -35,12 +35,15 @@ export async function readUser(
         SELECT id, handle FROM users
         WHERE handle = ${handle};
     `;
+
     if (rows.length < 1) {
         return null;
     }
     assertRowCount(rows, 1); // The 'handle' column is unique.
+
     const row = rows[0];
     assertColumn(row, 'id', 'number');
     assertColumn(row, 'handle', 'string');
+
     return { id: row.id, handle: row.handle };
 }

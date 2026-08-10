@@ -1,5 +1,11 @@
 import { SQL } from 'bun';
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import {
+    afterEach,
+    beforeEach,
+    describe,
+    expect,
+    test
+} from 'bun:test';
 
 import { Row, assertColumn } from '../src/database/types';
 import { readUser, writeUser } from '../src/database/users';
@@ -25,10 +31,10 @@ afterEach(async () =>
     deleteTestDatabase(testDatabaseName)
 );
 
-async function writeUsers(connection: SQL): Promise<Row[]> {
+async function writeUsers(connection: SQL): Promise<void> {
     // Similar to Promises constructed with `$`, the query will not execute
     // until the promise is awaited.
-    return connection<Row[]>`
+    return connection<void>`
         INSERT INTO users (handle)
         VALUES ('turing'), ('lovelace'), ('sedgewick');
     `;
@@ -36,7 +42,8 @@ async function writeUsers(connection: SQL): Promise<Row[]> {
 
 async function readUsers(connection: SQL): Promise<Row[]> {
     return connection<Row[]>`
-        SELECT * from users;
+        SELECT * from users
+        ORDER BY users.id;
     `;
 }
 

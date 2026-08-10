@@ -10,7 +10,7 @@ export type WithPrimaryKey<T> = (
 // -- https://bun.com/docs/runtime/sql#query-results
 export type Row = { [column: string]: unknown };
 
-type Primitive = 'string' | 'number';
+type Primitive = 'string' | 'number' | 'bigint';
 type Constructor = DateConstructor;
 type ColumnType = Primitive | Constructor;
 
@@ -22,7 +22,11 @@ type TypeOfType<T extends ColumnType> =
     T extends Primitive ? (
         T extends 'string' ?
             string
-            : number
+            : (
+                T extends 'number' ?
+                number
+                : bigint
+            )
     ) :
     T extends Constructor ?
         InstanceType<T>
@@ -58,7 +62,7 @@ export function assertColumn<
         } 
     } else {
         if (typeof column !== expectedType) {
-            throw new QueryShapeError(message);
+            throw new QueryShapeError(message + `; got ${typeof column}`);
         }
     }
 }
