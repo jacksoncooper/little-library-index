@@ -34,7 +34,15 @@ export async function writeOsmElementId(
     connection: SQL,
     osmElementId: OsmElementId
 ): Promise<number> {
-    return Promise.resolve(21);
+    const rows = await connection<Row[]>`
+        INSERT INTO osm_element_ids (element_type, element_id)
+        VALUES (${osmElementId.elementType}, ${osmElementId.elementId})
+        RETURNING id;
+    `;
+    assertRowCount(rows, 1);
+    const row = rows[0];
+    assertColumn(row, 'id', 'number');
+    return row.id;
 }
 
 export async function readOsmElementId(
@@ -57,10 +65,9 @@ export async function readOsmElementId(
     assertColumn(row, 'element_id', 'string');
 
     if (!(
-           row.element_type == 'node'
+        row.element_type == 'node'
         || row.element_type == 'relation'
-        || row.element_type == 'way'
-    )) {
+        || row.element_type == 'way')) {
         throw new QueryShapeError(
             `expect '${row.element_type}' to be one of `
             + `'node', 'relation', 'way'`);
@@ -68,7 +75,7 @@ export async function readOsmElementId(
 
     return {
         id: row.id,
-        // TODO: The BigInt constructor will throw a `SyntaxError` if it cannot
+        // TODO: The BigInt constructor will throw a `SyntaxError` if it can't
         // parse its argument. MDN says "Strings are parsed as if they are
         // source text for integer literals," which explains the bizarre error
         // class.

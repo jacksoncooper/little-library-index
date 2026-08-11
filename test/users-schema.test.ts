@@ -7,7 +7,7 @@ import {
     test
 } from 'bun:test';
 
-import { Row, assertColumn } from '../src/database/types';
+import { Row, assertColumn, assertRowCount } from '../src/database/types';
 import { readUser, writeUser } from '../src/database/users';
 
 import {
@@ -67,20 +67,21 @@ describe('readUser()', () => {
 });
 
 describe('writeUser()', () => {
-    test('insert a new user', () =>
+    test('insert two new users', () =>
         withDatabaseConnection(testConnection(), async db => {
             const turingId = await writeUser(db, {handle: 'turing'});
             const lovelaceId = await writeUser(db, {handle: 'lovelace'});
             expect(turingId).not.toBe(lovelaceId);
 
             const users = await readUsers(db);
+            assertRowCount(users, 2);
 
             const turing = users[0];
             assertColumn(turing, 'id', 'number');
             assertColumn(turing, 'handle', 'string');
             expect(turing.id).toBe(turingId);
             expect(turing.handle).toBe('turing');
-            
+
             const lovelace = users[1];
             assertColumn(lovelace, 'id', 'number');
             assertColumn(lovelace, 'handle', 'string');

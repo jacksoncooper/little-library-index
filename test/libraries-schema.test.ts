@@ -10,13 +10,14 @@ import {
 import {
     createTestDatabase,
     deleteTestDatabase,
+    rejectsWithPostgresError,
     testConnection,
     testDatabaseName,
     withDatabaseConnection,
 } from './connection';
 
-import { assertColumn, Row } from '../src/database/types';
-import { readOsmElementId } from '../src/database/libraries';
+import { Row, assertColumn, assertRowCount } from '../src/database/types';
+import { readOsmElementId, writeOsmElementId } from '../src/database/libraries';
 
 beforeEach(async () =>
     createTestDatabase(testDatabaseName)
@@ -86,6 +87,57 @@ describe('readOsmElementId()', () => {
             // primary key will do.
             const elementId2 = await readOsmElementId(db, 1);
             expect(elementId2).toBeNull();
+        })
+    );
+});
+
+describe('writeOsmElementId()', () => {
+    test('insert two new OSM element IDs', () =>
+        withDatabaseConnection(testConnection(), async db => {
+            const nodeId1 = await writeOsmElementId(db, {
+                elementType: 'node',
+                elementId: 10783380181n
+            });
+            const nodeId2 = await writeOsmElementId(db, {
+                elementType: 'node',
+                elementId: 10794116980n
+            });
+            expect(nodeId1).not.toBe(nodeId2);
+
+            const nodes = await readOsmElementIds(db);
+            assertRowCount(nodes, 2);
+
+            const node1 = nodes[0];
+            assertColumn(node1, 'element_type', 'string');
+            // Bun's SQL module gives back PostgreSQL's `bigint` datatype as a
+            // string, which is disappointing. Claude suspects this is because
+            // `JSON.stringify` will throw a `TypeError` if it encounters a
+            // `bigint`.
+            assertColumn(node1, 'element_id', 'string');
+            expect(node1.element_type).toBe('node');
+            expect(node1.element_id).toBe('10783380181');
+
+            const node2 = nodes[1];
+            assertColumn(node2, 'element_type', 'string');
+            assertColumn(node2, 'element_id', 'string');
+            expect(node2.element_type).toBe('node');
+            expect(node2.element_id).toBe('10794116980');
+        })
+    );
+
+    test('try to insert the same OSM element ID', () =>
+        withDatabaseConnection(testConnection(), async db => {
+            await writeOsmElementId(db, {
+                elementType: 'node',
+                elementId: 10783380181n
+            });
+            await rejectsWithPostgresError(
+                writeOsmElementId(db, {
+                    elementType: 'node',
+                    elementId: 10783380181n
+                }),
+                '23505'
+            );
         })
     );
 });

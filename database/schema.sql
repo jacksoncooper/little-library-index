@@ -33,7 +33,12 @@ CREATE DOMAIN url_id
 CREATE TABLE osm_element_ids (
   id           serial PRIMARY KEY,
   element_type osm_element_type NOT NULL,
-  element_id   bigint NOT NULL
+  element_id   bigint NOT NULL,
+  -- From https://wiki.openstreetmap.org/wiki/Elements#Ids,
+  --   "Element types have their own ID space, so there could be a node with
+  --   id=100 and a way with id=100, which are unlikely to be related or
+  --   geographically near to each other."
+  UNIQUE (element_type, element_id)
 );
 
 CREATE TABLE libraries (
@@ -91,6 +96,8 @@ CREATE TYPE isbn_version
 
 CREATE TABLE isbns (
   id      serial PRIMARY KEY,
+  -- TODO: Should this be an unconstrained string? I need to understand how the
+  -- ISBN format works.
   isbn    text UNIQUE NOT NULL,
   version isbn_version NOT NULL
 );
