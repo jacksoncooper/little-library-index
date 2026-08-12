@@ -10,9 +10,9 @@ import {
 import {
     createTestDatabase,
     deleteTestDatabase,
+    postgresError,
     rejectsWithPostgresError,
     testConnection,
-    testDatabaseName,
     withDatabaseConnection,
 } from './connection';
 
@@ -20,7 +20,7 @@ import { Row, assertColumn, assertRowCount } from '../src/database/types';
 import { readOsmElementId, writeOsmElementId } from '../src/database/libraries';
 
 beforeEach(async () =>
-    createTestDatabase(testDatabaseName)
+    createTestDatabase(testConnection.name)
 );
 
 afterEach(async () =>
@@ -28,7 +28,7 @@ afterEach(async () =>
     // `db` defines a connection pool of exactly those connections to the test
     // database. So, before we issue `dropdb`, we need to close the connections
     // that comprise the pool.
-    deleteTestDatabase(testDatabaseName)
+    deleteTestDatabase(testConnection.name)
 );
 
 /*
@@ -67,7 +67,7 @@ async function readOsmElementIds(connection: SQL): Promise<Row[]> {
 
 describe('readOsmElementId()', () => {
     test('retrieve OSM element ID by primary key', () =>
-        withDatabaseConnection(testConnection(), async db => {
+        withDatabaseConnection(testConnection.open(), async db => {
             const rows = await writeOsmElementIds(db);
             const row1 = rows[0];
             assertColumn(row1, 'id', 'number');
@@ -82,7 +82,7 @@ describe('readOsmElementId()', () => {
     );
 
     test('try to retrieve nonexistent OSM element ID', () =>
-        withDatabaseConnection(testConnection(), async db => {
+        withDatabaseConnection(testConnection.open(), async db => {
             // No OSM element IDs exist in the database, so any nonexistent
             // primary key will do.
             const elementId2 = await readOsmElementId(db, 1);
@@ -92,8 +92,8 @@ describe('readOsmElementId()', () => {
 });
 
 describe('writeOsmElementId()', () => {
-    test('insert two new OSM element IDs', () =>
-        withDatabaseConnection(testConnection(), async db => {
+    test('insert two open OSM element IDs', () =>
+        withDatabaseConnection(testConnection.open(), async db => {
             const nodeId1 = await writeOsmElementId(db, {
                 elementType: 'node',
                 elementId: 10783380181n
@@ -126,7 +126,7 @@ describe('writeOsmElementId()', () => {
     );
 
     test('try to insert the same OSM element ID', () =>
-        withDatabaseConnection(testConnection(), async db => {
+        withDatabaseConnection(testConnection.open(), async db => {
             await writeOsmElementId(db, {
                 elementType: 'node',
                 elementId: 10783380181n
@@ -136,7 +136,7 @@ describe('writeOsmElementId()', () => {
                     elementType: 'node',
                     elementId: 10783380181n
                 }),
-                '23505'
+                postgresError.uniqueViolation
             );
         })
     );

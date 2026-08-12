@@ -13,14 +13,14 @@ import { readUser, writeUser } from '../src/database/users';
 import {
     createTestDatabase,
     deleteTestDatabase,
+    postgresError,
     rejectsWithPostgresError,
     testConnection,
-    testDatabaseName,
     withDatabaseConnection
 } from './connection';
 
 beforeEach(async () =>
-    createTestDatabase(testDatabaseName)
+    createTestDatabase(testConnection.name)
 );
 
 afterEach(async () =>
@@ -28,7 +28,7 @@ afterEach(async () =>
     // `db` defines a connection pool of exactly those connections to the test
     // database. So, before we issue `dropdb`, we need to close the connections
     // that comprise the pool.
-    deleteTestDatabase(testDatabaseName)
+    deleteTestDatabase(testConnection.name)
 );
 
 async function writeUsers(connection: SQL): Promise<void> {
@@ -49,7 +49,7 @@ async function readUsers(connection: SQL): Promise<Row[]> {
 
 describe('readUser()', () => {
     test('retrieve user by handle', () =>
-        withDatabaseConnection(testConnection(), async db => {
+        withDatabaseConnection(testConnection.open(), async db => {
             await writeUsers(db);
             const user = await readUser(db, 'lovelace');
             expect(user).not.toBeNull();
@@ -58,7 +58,7 @@ describe('readUser()', () => {
     );
 
     test('try to retrieve nonexistent user', () =>
-        withDatabaseConnection(testConnection(), async db => {
+        withDatabaseConnection(testConnection.open(), async db => {
             await writeUsers(db);
             const user = await readUser(db, 'skiena');
             expect(user).toBeNull();
@@ -67,8 +67,8 @@ describe('readUser()', () => {
 });
 
 describe('writeUser()', () => {
-    test('insert two new users', () =>
-        withDatabaseConnection(testConnection(), async db => {
+    test('insert two open users', () =>
+        withDatabaseConnection(testConnection.open(), async db => {
             const turingId = await writeUser(db, {handle: 'turing'});
             const lovelaceId = await writeUser(db, {handle: 'lovelace'});
             expect(turingId).not.toBe(lovelaceId);
@@ -91,11 +91,11 @@ describe('writeUser()', () => {
     );
 
     test('try to insert an existing user', () =>
-        withDatabaseConnection(testConnection(), async db => {
+        withDatabaseConnection(testConnection.open(), async db => {
             await writeUser(db, {handle: 'turing'});
             await rejectsWithPostgresError(
                 writeUser(db, {handle: 'turing'}),
-                '23505');
+                postgresError.uniqueViolation);
         })
     )
 });
