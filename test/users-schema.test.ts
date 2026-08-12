@@ -31,7 +31,7 @@ afterEach(async () =>
     deleteTestDatabase(testConnection.name)
 );
 
-async function writeUsers(connection: SQL): Promise<void> {
+function writeUsers(connection: SQL): Promise<void> {
     // Similar to Promises constructed with `$`, the query will not execute
     // until the promise is awaited.
     return connection<void>`
@@ -40,7 +40,7 @@ async function writeUsers(connection: SQL): Promise<void> {
     `;
 }
 
-async function readUsers(connection: SQL): Promise<Row[]> {
+function readUsers(connection: SQL): Promise<Row[]> {
     return connection<Row[]>`
         SELECT * from users
         ORDER BY users.id;

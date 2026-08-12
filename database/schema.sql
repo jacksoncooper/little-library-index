@@ -49,7 +49,6 @@ CREATE TABLE libraries (
   location             geography(Point, 4326) NOT NULL,
   title                text,
   description          text,
-  accessibility_notes  text,
   osm_element_id       integer REFERENCES osm_element_ids (id)
 );
 

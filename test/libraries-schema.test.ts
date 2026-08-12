@@ -42,7 +42,7 @@ node
 out;
 */
 
-async function writeOsmElementIds(connection: SQL): Promise<Row[]> {
+function writeOsmElementIds(connection: SQL): Promise<Row[]> {
     // The `WITH` statement is used to logically guarantee an insertion ordering
     // of the tuples that follow the `VALUES` keyword.
     return connection<Row[]>`
@@ -58,7 +58,7 @@ async function writeOsmElementIds(connection: SQL): Promise<Row[]> {
     `;
 }
 
-async function readOsmElementIds(connection: SQL): Promise<Row[]> {
+function readOsmElementIds(connection: SQL): Promise<Row[]> {
     return connection<Row[]>`
         SELECT * from osm_element_ids
         ORDER BY osm_element_ids.id;
@@ -141,3 +141,31 @@ describe('writeOsmElementId()', () => {
         })
     );
 });
+
+function writeLibrary(connection: SQL): Promise<void> {
+    return connection<void>`
+        WITH new_user AS (
+            INSERT INTO users (handle)
+            VALUES ('mapadu')
+            RETURNING id
+        )
+        INSERT INTO libraries (
+            created_at, created_by,
+            url_id,
+            location,
+            title, description,
+            osm_element_id
+        )
+        SELECT
+            '2023-04-04 01:00:07 UTC',
+            new_user.id,
+            -- This is a placeholder URL ID.
+            'ao6wm2',
+            ST_Point(-122.4781917, 37.7774749, 4326)::geography,
+            null,
+            null,
+            null
+        FROM new_user
+        RETURNING id;
+    `;
+}

@@ -26,7 +26,6 @@ export type Library = {
     location: Location,
     title: string | null,
     description: string | null,
-    accessibilityNotes: string | null,
     osmElementId: number | null,
 };
 
