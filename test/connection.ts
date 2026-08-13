@@ -48,13 +48,13 @@ export function rejectsWithPostgresError<T>(
   errno: string,
 ): Promise<string> {
   return query.then(
-    (_) => {
+    () => {
       expect().fail('query not expected to fulfill');
       expect.unreachable();
     },
     (e) => {
       expect(e).toBeInstanceOf(SQL.PostgresError);
-      expect(e.errno).toBe(errno);
+      expect((e as SQL.PostgresError).errno).toBe(errno);
       return errno;
     },
   );

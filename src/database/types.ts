@@ -39,20 +39,24 @@ export function assertColumn<K extends string, T extends ColumnType>(
   property: K,
   expectedType: T,
 ): asserts row is Row & Record<K, TypeOfType<T>> {
-  if (!row.hasOwnProperty(property)) {
-    throw new QueryShapeError(`expected row to have property '${property}'`);
+  if (!Object.prototype.hasOwnProperty.call(row, property)) {
+    throw new QueryShapeError(
+      `expected row to have property '${property}'`);
   }
 
   const column = row[property];
-  const message = `expected row to have column '${property}' of type ${expectedType}`;
 
   if (isConstructor(expectedType)) {
     if (!(column instanceof expectedType)) {
-      throw new QueryShapeError(message);
+      throw new QueryShapeError(
+        `expected row to have property '${property}'`
+        + ` of type ${expectedType.name}; got ${typeof column}`);
     }
   } else {
     if (typeof column !== expectedType) {
-      throw new QueryShapeError(message + `; got ${typeof column}`);
+      throw new QueryShapeError(
+        `expected row to have property '${property}'`
+        + ` of type ${expectedType.toString()}; got ${typeof column}`);
     }
   }
 }
