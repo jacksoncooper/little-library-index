@@ -148,6 +148,10 @@ function writeLibrary(connection: SQL): Promise<void> {
             INSERT INTO users (handle)
             VALUES ('mapadu')
             RETURNING id
+        ), new_osm_element_id AS (
+            INSERT INTO osm_element_ids (element_type, element_id)
+            VALUES ('node', 10783380181)
+            RETURNING id
         )
         INSERT INTO libraries (
             created_at, created_by,
@@ -164,8 +168,14 @@ function writeLibrary(connection: SQL): Promise<void> {
             ST_Point(-122.4781917, 37.7774749, 4326)::geography,
             null,
             null,
-            null
-        FROM new_user
+            new_osm_element_id.id
+        FROM new_user CROSS JOIN new_osm_element_id
         RETURNING id;
     `;
 }
+
+describe('readLibrary()', () => {
+    test('retrieve OSM element ID by URL ID', () =>
+        Promise.resolve(null)
+    );
+});
