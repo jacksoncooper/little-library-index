@@ -63,11 +63,13 @@ At the moment, I'm a systems programmer, professionally. I'm interested in learn
 ## `bun create hono@latest`
 
 To install dependencies:
+
 ```sh
 bun install
 ```
 
 To run:
+
 ```sh
 bun run dev
 ```

@@ -1,34 +1,26 @@
 import { SQL } from 'bun';
-import {
-    afterEach,
-    beforeEach,
-    describe,
-    expect,
-    test
-} from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import {
-    createTestDatabase,
-    deleteTestDatabase,
-    postgresError,
-    rejectsWithPostgresError,
-    testConnection,
-    withDatabaseConnection,
+  createTestDatabase,
+  deleteTestDatabase,
+  postgresError,
+  rejectsWithPostgresError,
+  testConnection,
+  withDatabaseConnection,
 } from './connection';
 
 import { Row, assertColumn, assertRowCount } from '../src/database/types';
 import { readOsmElementId, writeOsmElementId } from '../src/database/libraries';
 
-beforeEach(async () =>
-    createTestDatabase(testConnection.name)
-);
+beforeEach(async () => createTestDatabase(testConnection.name));
 
 afterEach(async () =>
-    // `dropdb` will fail if there are existing connections to the database.
-    // `db` defines a connection pool of exactly those connections to the test
-    // database. So, before we issue `dropdb`, we need to close the connections
-    // that comprise the pool.
-    deleteTestDatabase(testConnection.name)
+  // `dropdb` will fail if there are existing connections to the database.
+  // `db` defines a connection pool of exactly those connections to the test
+  // database. So, before we issue `dropdb`, we need to close the connections
+  // that comprise the pool.
+  deleteTestDatabase(testConnection.name),
 );
 
 /*
@@ -43,9 +35,9 @@ out;
 */
 
 function writeOsmElementIds(connection: SQL): Promise<Row[]> {
-    // The `WITH` statement is used to logically guarantee an insertion ordering
-    // of the tuples that follow the `VALUES` keyword.
-    return connection<Row[]>`
+  // The `WITH` statement is used to logically guarantee an insertion ordering
+  // of the tuples that follow the `VALUES` keyword.
+  return connection<Row[]>`
         WITH inserted AS(
             INSERT INTO osm_element_ids (element_type, element_id)
             VALUES
@@ -59,91 +51,87 @@ function writeOsmElementIds(connection: SQL): Promise<Row[]> {
 }
 
 function readOsmElementIds(connection: SQL): Promise<Row[]> {
-    return connection<Row[]>`
+  return connection<Row[]>`
         SELECT * from osm_element_ids
         ORDER BY osm_element_ids.id;
     `;
 }
 
 describe('readOsmElementId()', () => {
-    test('retrieve OSM element ID by primary key', () =>
-        withDatabaseConnection(testConnection.open(), async db => {
-            const rows = await writeOsmElementIds(db);
-            const row1 = rows[0];
-            assertColumn(row1, 'id', 'number');
+  test('retrieve OSM element ID by primary key', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const rows = await writeOsmElementIds(db);
+      const row1 = rows[0];
+      assertColumn(row1, 'id', 'number');
 
-            const elementId1 = await readOsmElementId(db, row1.id);
-            expect(elementId1).not.toBeNull();
+      const elementId1 = await readOsmElementId(db, row1.id);
+      expect(elementId1).not.toBeNull();
 
-            expect(elementId1!.id).toBe(row1.id);
-            expect(elementId1!.elementId).toBe(10783380181n);
-            expect(elementId1!.elementType).toBe('node');
-        })
-    );
+      expect(elementId1!.id).toBe(row1.id);
+      expect(elementId1!.elementId).toBe(10783380181n);
+      expect(elementId1!.elementType).toBe('node');
+    }));
 
-    test('try to retrieve nonexistent OSM element ID', () =>
-        withDatabaseConnection(testConnection.open(), async db => {
-            // No OSM element IDs exist in the database, so any nonexistent
-            // primary key will do.
-            const elementId2 = await readOsmElementId(db, 1);
-            expect(elementId2).toBeNull();
-        })
-    );
+  test('try to retrieve nonexistent OSM element ID', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      // No OSM element IDs exist in the database, so any nonexistent
+      // primary key will do.
+      const elementId2 = await readOsmElementId(db, 1);
+      expect(elementId2).toBeNull();
+    }));
 });
 
 describe('writeOsmElementId()', () => {
-    test('insert two open OSM element IDs', () =>
-        withDatabaseConnection(testConnection.open(), async db => {
-            const nodeId1 = await writeOsmElementId(db, {
-                elementType: 'node',
-                elementId: 10783380181n
-            });
-            const nodeId2 = await writeOsmElementId(db, {
-                elementType: 'node',
-                elementId: 10794116980n
-            });
-            expect(nodeId1).not.toBe(nodeId2);
+  test('insert two open OSM element IDs', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const nodeId1 = await writeOsmElementId(db, {
+        elementType: 'node',
+        elementId: 10783380181n,
+      });
+      const nodeId2 = await writeOsmElementId(db, {
+        elementType: 'node',
+        elementId: 10794116980n,
+      });
+      expect(nodeId1).not.toBe(nodeId2);
 
-            const nodes = await readOsmElementIds(db);
-            assertRowCount(nodes, 2);
+      const nodes = await readOsmElementIds(db);
+      assertRowCount(nodes, 2);
 
-            const node1 = nodes[0];
-            assertColumn(node1, 'element_type', 'string');
-            // Bun's SQL module gives back PostgreSQL's `bigint` datatype as a
-            // string, which is disappointing. Claude suspects this is because
-            // `JSON.stringify` will throw a `TypeError` if it encounters a
-            // `bigint`.
-            assertColumn(node1, 'element_id', 'string');
-            expect(node1.element_type).toBe('node');
-            expect(node1.element_id).toBe('10783380181');
+      const node1 = nodes[0];
+      assertColumn(node1, 'element_type', 'string');
+      // Bun's SQL module gives back PostgreSQL's `bigint` datatype as a
+      // string, which is disappointing. Claude suspects this is because
+      // `JSON.stringify` will throw a `TypeError` if it encounters a
+      // `bigint`.
+      assertColumn(node1, 'element_id', 'string');
+      expect(node1.element_type).toBe('node');
+      expect(node1.element_id).toBe('10783380181');
 
-            const node2 = nodes[1];
-            assertColumn(node2, 'element_type', 'string');
-            assertColumn(node2, 'element_id', 'string');
-            expect(node2.element_type).toBe('node');
-            expect(node2.element_id).toBe('10794116980');
-        })
-    );
+      const node2 = nodes[1];
+      assertColumn(node2, 'element_type', 'string');
+      assertColumn(node2, 'element_id', 'string');
+      expect(node2.element_type).toBe('node');
+      expect(node2.element_id).toBe('10794116980');
+    }));
 
-    test('try to insert the same OSM element ID', () =>
-        withDatabaseConnection(testConnection.open(), async db => {
-            await writeOsmElementId(db, {
-                elementType: 'node',
-                elementId: 10783380181n
-            });
-            await rejectsWithPostgresError(
-                writeOsmElementId(db, {
-                    elementType: 'node',
-                    elementId: 10783380181n
-                }),
-                postgresError.uniqueViolation
-            );
-        })
-    );
+  test('try to insert the same OSM element ID', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      await writeOsmElementId(db, {
+        elementType: 'node',
+        elementId: 10783380181n,
+      });
+      await rejectsWithPostgresError(
+        writeOsmElementId(db, {
+          elementType: 'node',
+          elementId: 10783380181n,
+        }),
+        postgresError.uniqueViolation,
+      );
+    }));
 });
 
 function writeLibrary(connection: SQL): Promise<void> {
-    return connection<void>`
+  return connection<void>`
         WITH new_user AS (
             INSERT INTO users (handle)
             VALUES ('mapadu')
@@ -175,7 +163,5 @@ function writeLibrary(connection: SQL): Promise<void> {
 }
 
 describe('readLibrary()', () => {
-    test('retrieve OSM element ID by URL ID', () =>
-        Promise.resolve(null)
-    );
+  test('retrieve OSM element ID by URL ID', () => Promise.resolve(null));
 });
