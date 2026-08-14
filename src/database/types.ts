@@ -39,7 +39,7 @@ export function assertRowCount(rows: Row[], expected: number): void {
 export function assertColumn<
   K extends string,
   T extends ColumnType,
-  N extends boolean = false
+  N extends boolean = false,
 >(
   row: Row,
   property: K,
@@ -50,17 +50,11 @@ export function assertColumn<
   // subtype of the literal `false`. If you explicitly pass the third type
   // argument as `true` but leave `nullable` defaulted, this becomes a problem.
   // This is an impractical edge case.
-  nullable: N = false as N
+  nullable: N = false as N,
 ): asserts row is Row &
-    Record<K,
-      N extends true
-      ? TypeOfType<T> | null
-      : TypeOfType<T>
-    >
-{
+  Record<K, N extends true ? TypeOfType<T> | null : TypeOfType<T>> {
   if (!Object.prototype.hasOwnProperty.call(row, property)) {
-    throw new QueryShapeError(
-      `expected row to have property '${property}'`);
+    throw new QueryShapeError(`expected row to have property '${property}'`);
   }
 
   const column = row[property];
@@ -72,14 +66,16 @@ export function assertColumn<
   if (isConstructor(expectedType)) {
     if (!(column instanceof expectedType)) {
       throw new QueryShapeError(
-        `expected row to have property '${property}'`
-        + ` of type ${expectedType.name}; got ${typeof column}`);
+        `expected row to have property '${property}'` +
+          ` of type ${expectedType.name}; got ${typeof column}`,
+      );
     }
   } else {
     if (typeof column !== expectedType) {
       throw new QueryShapeError(
-        `expected row to have property '${property}'`
-        + ` of type ${expectedType.toString()}; got ${typeof column}`);
+        `expected row to have property '${property}'` +
+          ` of type ${expectedType.toString()}; got ${typeof column}`,
+      );
     }
   }
 }

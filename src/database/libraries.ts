@@ -129,16 +129,17 @@ export async function readLibraryByUrlId(
   assertColumn(row, 'description', 'string', true);
   assertColumn(row, 'osm_element_id', 'number');
 
-  const point = JSON.parse(row.location);
+  const point = JSON.parse(row.location) as Row;
   assertColumn(point, 'coordinates', Array);
   if (point.coordinates.length != 2) {
-   throw new QueryShapeError(
-    'expect location to be two-dimensional,'
-    + ` but got ${point.coordinates.length} dimensions`)
+    throw new QueryShapeError(
+      'expect location to be two-dimensional,' +
+        ` but got ${point.coordinates.length} dimensions`,
+    );
   }
   const location = {
     latitude: point.coordinates[1],
-    longitude: point.coordinates[0]
+    longitude: point.coordinates[0],
   };
   assertColumn(location, 'latitude', 'number');
   assertColumn(location, 'longitude', 'number');
@@ -152,5 +153,5 @@ export async function readLibraryByUrlId(
     title: row.title,
     description: row.description,
     osmElementId: row.osm_element_id,
-  }
+  };
 }

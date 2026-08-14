@@ -11,7 +11,11 @@ import {
 } from './connection';
 
 import { Row, assertColumn, assertRowCount } from '../src/database/types';
-import { readLibraryByUrlId, readOsmElementId, writeOsmElementId } from '../src/database/libraries';
+import {
+  readLibraryByUrlId,
+  readOsmElementId,
+  writeOsmElementId,
+} from '../src/database/libraries';
 
 beforeEach(async () => createTestDatabase(testConnection.name));
 
@@ -178,14 +182,16 @@ describe('readLibrary()', () => {
 
       expect(library!.id).toEqual(row.id);
       expect(library!.createdAt).toEqual(
-        new Date(Date.UTC(2023, 3, 4, 1, 0, 7)));
+        new Date(Date.UTC(2023, 3, 4, 1, 0, 7)),
+      );
       expect(library!.createdBy).toEqual(row.created_by);
       expect(library!.urlId).toEqual('ao6wm2');
-      expect(library!.location).toEqual(
-        { latitude: 37.7774749, longitude: -122.4781917 });
+      expect(library!.location).toEqual({
+        latitude: 37.7774749,
+        longitude: -122.4781917,
+      });
       expect(library!.title).toBeNull();
       expect(library!.description).toBeNull();
       expect(library!.osmElementId).toEqual(row.osm_element_id);
-    })
-  );
+    }));
 });
