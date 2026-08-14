@@ -1,3 +1,5 @@
+// Thrown when the contents of the database don't match what's expected.
+//
 // "JavaScript: The Definitive Guide" 7th Edition (p. 305)
 export class QueryShapeError extends Error {}
 
@@ -9,7 +11,7 @@ export type WithPrimaryKey<T> = { id: number } & T;
 export type Row = { [column: string]: unknown };
 
 type Primitive = 'string' | 'number' | 'bigint';
-type Constructor = DateConstructor;
+type Constructor = ArrayConstructor | DateConstructor;
 type ColumnType = Primitive | Constructor;
 
 function isConstructor(value: ColumnType): value is Constructor {
@@ -34,17 +36,38 @@ export function assertRowCount(rows: Row[], expected: number): void {
   }
 }
 
-export function assertColumn<K extends string, T extends ColumnType>(
+export function assertColumn<
+  K extends string,
+  T extends ColumnType,
+  N extends boolean = false
+>(
   row: Row,
   property: K,
   expectedType: T,
-): asserts row is Row & Record<K, TypeOfType<T>> {
+  // TODO: The cast is necessary here, because TypeScript is worried that `N`
+  // may be instantiated with a subtype where no member is `false`. One such
+  // example is the literal `true`, which is a subtype of `boolean`, but not a
+  // subtype of the literal `false`. If you explicitly pass the third type
+  // argument as `true` but leave `nullable` defaulted, this becomes a problem.
+  // This is an impractical edge case.
+  nullable: N = false as N
+): asserts row is Row &
+    Record<K,
+      N extends true
+      ? TypeOfType<T> | null
+      : TypeOfType<T>
+    >
+{
   if (!Object.prototype.hasOwnProperty.call(row, property)) {
     throw new QueryShapeError(
       `expected row to have property '${property}'`);
   }
 
   const column = row[property];
+
+  if (nullable && column === null) {
+    return;
+  }
 
   if (isConstructor(expectedType)) {
     if (!(column instanceof expectedType)) {

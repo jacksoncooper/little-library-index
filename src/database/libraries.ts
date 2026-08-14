@@ -100,5 +100,57 @@ export async function readLibraryByUrlId(
   connection: SQL,
   urlId: string,
 ): Promise<WithPrimaryKey<Library> | null> {
-  return Promise.resolve(null);
+  const rows = await connection<Row[]>`
+    SELECT
+      id,
+      created_at,
+      created_by,
+      url_id,
+      ST_AsGeoJson(location) as location,
+      title,
+      description,
+      osm_element_id
+    FROM libraries
+    WHERE url_id = ${urlId}
+  `;
+
+  if (rows.length < 1) {
+    return null;
+  }
+  assertRowCount(rows, 1); // The `url_id` column is unique.
+
+  const row = rows[0];
+  assertColumn(row, 'id', 'number');
+  assertColumn(row, 'created_at', Date);
+  assertColumn(row, 'created_by', 'number');
+  assertColumn(row, 'url_id', 'string');
+  assertColumn(row, 'location', 'string');
+  assertColumn(row, 'title', 'string', true);
+  assertColumn(row, 'description', 'string', true);
+  assertColumn(row, 'osm_element_id', 'number');
+
+  const point = JSON.parse(row.location);
+  assertColumn(point, 'coordinates', Array);
+  if (point.coordinates.length != 2) {
+   throw new QueryShapeError(
+    'expect location to be two-dimensional,'
+    + ` but got ${point.coordinates.length} dimensions`)
+  }
+  const location = {
+    latitude: point.coordinates[1],
+    longitude: point.coordinates[0]
+  };
+  assertColumn(location, 'latitude', 'number');
+  assertColumn(location, 'longitude', 'number');
+
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    createdBy: row.created_by,
+    urlId: row.url_id,
+    location,
+    title: row.title,
+    description: row.description,
+    osmElementId: row.osm_element_id,
+  }
 }

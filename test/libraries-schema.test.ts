@@ -11,7 +11,7 @@ import {
 } from './connection';
 
 import { Row, assertColumn, assertRowCount } from '../src/database/types';
-import { readOsmElementId, writeOsmElementId } from '../src/database/libraries';
+import { readLibraryByUrlId, readOsmElementId, writeOsmElementId } from '../src/database/libraries';
 
 beforeEach(async () => createTestDatabase(testConnection.name));
 
@@ -130,8 +130,8 @@ describe('writeOsmElementId()', () => {
     }));
 });
 
-function writeLibrary(connection: SQL): Promise<void> {
-  return connection<void>`
+function writeLibrary(connection: SQL): Promise<Row[]> {
+  return connection<Row[]>`
         WITH new_user AS (
             INSERT INTO users (handle)
             VALUES ('mapadu')
@@ -158,10 +158,34 @@ function writeLibrary(connection: SQL): Promise<void> {
             null,
             new_osm_element_id.id
         FROM new_user CROSS JOIN new_osm_element_id
-        RETURNING id;
+        RETURNING id, created_by, osm_element_id;
     `;
 }
 
 describe('readLibrary()', () => {
-  test('retrieve OSM element ID by URL ID', () => Promise.resolve(null));
+  test('retrieve OSM element ID by URL ID', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const rows = await writeLibrary(db);
+      assertRowCount(rows, 1);
+      const row = rows[0];
+      assertColumn(row, 'id', 'number');
+      assertColumn(row, 'created_by', 'number');
+      assertColumn(row, 'osm_element_id', 'number');
+
+      const library = await readLibraryByUrlId(db, 'ao6wm2');
+
+      expect(library).not.toBe(null);
+
+      expect(library!.id).toEqual(row.id);
+      expect(library!.createdAt).toEqual(
+        new Date(Date.UTC(2023, 3, 4, 1, 0, 7)));
+      expect(library!.createdBy).toEqual(row.created_by);
+      expect(library!.urlId).toEqual('ao6wm2');
+      expect(library!.location).toEqual(
+        { latitude: 37.7774749, longitude: -122.4781917 });
+      expect(library!.title).toBeNull();
+      expect(library!.description).toBeNull();
+      expect(library!.osmElementId).toEqual(row.osm_element_id);
+    })
+  );
 });
