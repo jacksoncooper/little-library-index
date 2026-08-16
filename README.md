@@ -20,6 +20,7 @@ At the moment, I'm a systems programmer, professionally. I'm interested in learn
 - I'm not using an ORM, because it's not justified by the scale of the project and because I want to interface with the database myself.
 - Both client code and server will be written entirely in TypeScript, because type safety is wonderful.
 - This project will never be vibe coded, but I use Anthropic's Sonnet 5 for design and testing.
+- To the extent possible, I want the read-only endpoints to work without JavaScript. This means a URL-parameter first design. Any JavaScript can manipulate the DOM according to those endpoints without a page refresh.
 
 ## Project notes
 
@@ -29,13 +30,15 @@ At the moment, I'm a systems programmer, professionally. I'm interested in learn
 
 ### v1: The minimal viable product
 
-- [ ] The minimal scope for v1 is 3 pages: (1) the home page, with a map showing libraries near you or, failing location services, a default view. Below, a list of those same libraries. Clicking on any takes you to the page for that library. To the right, a live feed of the recent transactions in that bounding box. (2) The library page, displaying its books and the UI to check in, check out, and reconcile. (3) The profile page.
+- [ ] The minimal scope for v1 is 4 pages: (1) the home page, with a map showing libraries near you or, failing location services, a default view. Below, a list of those same libraries. Clicking on any takes you to the page for that library. To the right, recent transactions in that bounding box. (2) The library page, displaying its books and the UI to check in, check out, and reconcile. (3) The profile page (4) a page with shortcuts to view the lending libraries around a particular city or other place.
 - [ ] Users can add lending libraries.
 - [ ] Users can "check in" and "check out" books in a library, or "reconcile" the quantity of a book in a library.
 - [ ] User transactions will be associated with a "username", but any user can associate a transaction with any username. This username will form the backbone of an identity table for v2.
 - [ ] Integration with Open Library for a cover image, title, and author.
-- [ ] Users can search for libraries near a location, or their current location, and can view the profile of a library.
+- [ ] Users can pan a map to retrieve libraries in that location. The map will cluster dense pins. This bounding box will inform both the list of libraries displayed below the map and the recent transactions visible to the right of both map and library list. This map will start centered on the continental United States. With location services, it can fly to the user's current location.
+- [ ] The list of libraries is paginated. Panning the map will update a URL parameter with a bounding box, and update the library list to be equivalent to what you would see during a page refresh.
 - [ ] The initial set of libraries is seeded from the Open Street Map contributors.
+- [ ] A hard-coded page of cities to give non-JS users a path to view libraries at their location. Each entry in this page is an anchor to a friendly URL like `?city=chicago`. My server will translate that to an HTTP redirect to the home page with a reasonable bounding box. It would be awesome for these URLs to be user-contributed in the web application, but for now, GitHub will suffice.
 
 ### v2
 
@@ -49,6 +52,7 @@ At the moment, I'm a systems programmer, professionally. I'm interested in learn
 - [ ] Self host cover images for books without ISBN codes. Especially for things like zines.
 - [ ] ISO 639.3 language support.
 - [ ] Support libraries that aren't geometric points, like OSM ways.
+- [ ] Support searching for libraries by naming a location, and get a reasonable bounding box for that location, with a drop-down to resolve ambiguous locations, e.g., San Francisco, CA versus San Francisco, Agusan del Sur. v1 has an inflexible hard-coded dropdown with pretty URL parameter names. This is the generalization of that feature.
 
 ### v3
 
