@@ -83,7 +83,7 @@ describe('writeUser()', () => {
       await writeUser(db, { handle: 'turing' });
       await rejectsWithPostgresError(
         writeUser(db, { handle: 'turing' }),
-        postgresError.uniqueViolation,
+        postgresError.unique_violation,
       );
     }));
 });

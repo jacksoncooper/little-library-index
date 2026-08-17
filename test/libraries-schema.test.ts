@@ -131,7 +131,7 @@ describe('writeOsmElementId()', () => {
           elementType: 'node',
           elementId: 10783380181n,
         }),
-        postgresError.uniqueViolation,
+        postgresError.unique_violation,
       );
     }));
 });
@@ -212,6 +212,13 @@ describe('readLibraryByUrlId()', () => {
       expect(library!.description).toBeNull();
       expect(library!.osmElementId).toEqual(row.osm_element_id);
     }));
+
+  test('try to retrieve a nonexistent library', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      await writeLibraries(db);
+      const id = await readLibraryByUrlId(db, 'ao7wm2');
+      expect(id).toBeNull();
+    }));
 });
 
 describe('writeLibrary()', () => {
@@ -274,5 +281,81 @@ describe('writeLibrary()', () => {
         description: libraryInDb.description,
         osmElementId: libraryInDb.osm_element_id,
       });
+    }));
+
+  test('try to insert a library with the same URL ID', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const userId = await writeUser(db, { handle: 'mapadu' });
+      const osmElementId = await writeOsmElementId(db, {
+        elementType: 'node',
+        elementId: 10783380181n,
+      });
+      const library = {
+        createdAt: new Date(Date.UTC(2023, 3, 4, 1, 0, 7)),
+        createdBy: userId,
+        urlId: 'ao6wm2',
+        location: {
+          latitude: 37.7774749,
+          longitude: -122.4781917,
+        },
+        title: null,
+        description: null,
+        osmElementId: osmElementId,
+      };
+      await writeLibrary(db, library);
+      await rejectsWithPostgresError(
+        writeLibrary(db, library),
+        postgresError.unique_violation,
+      );
+    }));
+
+  test('try to insert a library with a URL ID with an invalid character', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const userId = await writeUser(db, { handle: 'mapadu' });
+      const osmElementId = await writeOsmElementId(db, {
+        elementType: 'node',
+        elementId: 10783380181n,
+      });
+      const library = {
+        createdAt: new Date(Date.UTC(2023, 3, 4, 1, 0, 7)),
+        createdBy: userId,
+        urlId: 'ao!wm2',
+        location: {
+          latitude: 37.7774749,
+          longitude: -122.4781917,
+        },
+        title: null,
+        description: null,
+        osmElementId: osmElementId,
+      };
+      await rejectsWithPostgresError(
+        writeLibrary(db, library),
+        postgresError.check_violation,
+      );
+    }));
+
+  test('try to insert a library with a URL ID with an invalid length', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const userId = await writeUser(db, { handle: 'mapadu' });
+      const osmElementId = await writeOsmElementId(db, {
+        elementType: 'node',
+        elementId: 10783380181n,
+      });
+      const library = {
+        createdAt: new Date(Date.UTC(2023, 3, 4, 1, 0, 7)),
+        createdBy: userId,
+        urlId: 'ao6wm27',
+        location: {
+          latitude: 37.7774749,
+          longitude: -122.4781917,
+        },
+        title: null,
+        description: null,
+        osmElementId: osmElementId,
+      };
+      await rejectsWithPostgresError(
+        writeLibrary(db, library),
+        postgresError.string_data_right_truncation,
+      );
     }));
 });

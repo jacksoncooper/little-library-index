@@ -40,7 +40,9 @@ export function withDatabaseConnection<T>(
 
 // https://www.postgresql.org/docs/current/errcodes-appendix.html
 export const postgresError = {
-  uniqueViolation: '23505',
+  check_violation: '23514',
+  unique_violation: '23505',
+  string_data_right_truncation: '22001',
 };
 
 export function rejectsWithPostgresError<T>(
