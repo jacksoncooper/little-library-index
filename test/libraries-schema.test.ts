@@ -12,10 +12,13 @@ import {
 
 import { Row, assertColumn, assertRowCount } from '../src/database/types';
 import {
+  Library,
   readLibraryByUrlId,
   readOsmElementId,
+  writeLibrary,
   writeOsmElementId,
 } from '../src/database/libraries';
+import { writeUser } from '../src/database/users';
 
 beforeEach(async () => createTestDatabase(testConnection.name));
 
@@ -86,7 +89,7 @@ describe('readOsmElementId()', () => {
 });
 
 describe('writeOsmElementId()', () => {
-  test('insert two open OSM element IDs', () =>
+  test('insert a new OSM element ID', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
       const nodeId1 = await writeOsmElementId(db, {
         elementType: 'node',
@@ -134,7 +137,7 @@ describe('writeOsmElementId()', () => {
     }));
 });
 
-function writeLibrary(connection: SQL): Promise<Row[]> {
+function writeLibraries(connection: SQL): Promise<Row[]> {
   return connection<Row[]>`
         WITH new_user AS (
             INSERT INTO users (handle)
@@ -155,7 +158,7 @@ function writeLibrary(connection: SQL): Promise<Row[]> {
         SELECT
             '2023-04-04 01:00:07 UTC',
             new_user.id,
-            -- This is a placeholder URL ID.
+            -- This is not a real URL ID.
             'ao6wm2',
             ST_Point(-122.4781917, 37.7774749, 4326)::geography,
             null,
@@ -166,10 +169,26 @@ function writeLibrary(connection: SQL): Promise<Row[]> {
     `;
 }
 
-describe('readLibrary()', () => {
-  test('retrieve OSM element ID by URL ID', () =>
+function readLibraries(connection: SQL): Promise<Row[]>  {
+  return connection<Row[]>`
+    SELECT
+      id,
+      created_at,
+      created_by,
+      url_id,
+      ST_AsGeoJson(location) as location,
+      title,
+      description,
+      osm_element_id
+    FROM libraries
+    ORDER BY libraries.id;
+  `;
+}
+
+describe('readLibraryByUrlId()', () => {
+  test('retrieve library by URL ID', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const rows = await writeLibrary(db);
+      const rows = await writeLibraries(db);
       assertRowCount(rows, 1);
       const row = rows[0];
       assertColumn(row, 'id', 'number');
@@ -194,4 +213,68 @@ describe('readLibrary()', () => {
       expect(library!.description).toBeNull();
       expect(library!.osmElementId).toEqual(row.osm_element_id);
     }));
+});
+
+describe('writeLibrary()', () => {
+  test('insert a new library', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      // These are implementation functions! Writing this test in terms of them
+      // means that, for example, if `writeUser` misbehaves by returning a
+      // primary key that doesn't correspond to an entry in the users table,
+      // our test will fail the foreign key constraint on insert. This is an
+      // acceptable dependency for reducing test code duplication.
+      const userId = await writeUser(db, { handle: 'mapadu' });
+      const osmElementId = await writeOsmElementId(db, {
+        elementType: 'node',
+        elementId: 10783380181n
+      });
+
+      const expectedLibrary: Library = {
+        createdAt: new Date(Date.UTC(2023, 3, 4, 1, 0, 7)),
+        createdBy: userId,
+        urlId: 'ao6wm2',
+        location: {
+          latitude: 37.7774749,
+          longitude: -122.4781917,
+        },
+        title: null,
+        description: null,
+        osmElementId: osmElementId,
+      };
+      const libraryId = await writeLibrary(db, expectedLibrary);
+
+      const libraryRowsInDb = await readLibraries(db);
+      assertRowCount(libraryRowsInDb, 1);
+      const libraryInDb = libraryRowsInDb[0];
+      assertColumn(libraryInDb, 'id', 'number');
+      assertColumn(libraryInDb, 'created_at', Date);
+      assertColumn(libraryInDb, 'created_by', 'number');
+      assertColumn(libraryInDb, 'url_id', 'string');
+      assertColumn(libraryInDb, 'location', 'string');
+      assertColumn(libraryInDb, 'title', 'string', true);
+      assertColumn(libraryInDb, 'description', 'string', true);
+      assertColumn(libraryInDb, 'osm_element_id', 'number');
+
+      const point = JSON.parse(libraryInDb.location) as Row;
+      assertColumn(point, 'coordinates', Array);
+      expect(point.coordinates).toHaveLength(2);
+      const locationInDb = {
+        latitude: point.coordinates[1],
+        longitude: point.coordinates[0],
+      };
+      assertColumn(locationInDb, 'latitude', 'number');
+      assertColumn(locationInDb, 'longitude', 'number');
+
+      expect(libraryId).toBe(libraryInDb.id);
+      expect(expectedLibrary).toEqual({
+        createdAt: libraryInDb.created_at,
+        createdBy: libraryInDb.created_by,
+        urlId: libraryInDb.url_id,
+        location: locationInDb,
+        title: libraryInDb.title,
+        description: libraryInDb.description,
+        osmElementId: libraryInDb.osm_element_id,
+      });
+    })
+  );
 });

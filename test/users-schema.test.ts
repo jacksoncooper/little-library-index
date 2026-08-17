@@ -57,7 +57,7 @@ describe('readUser()', () => {
 });
 
 describe('writeUser()', () => {
-  test('insert two open users', () =>
+  test('insert a new user', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
       const turingId = await writeUser(db, { handle: 'turing' });
       const lovelaceId = await writeUser(db, { handle: 'lovelace' });

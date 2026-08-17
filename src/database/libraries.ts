@@ -89,7 +89,37 @@ export async function writeLibrary(
   connection: SQL,
   library: Library,
 ): Promise<number> {
-  return Promise.resolve(42);
+  const location = {
+    "type": "Point",
+    "coordinates": [
+      library.location.longitude,
+      library.location.latitude
+    ]
+  };
+  const rows = await connection<Row[]>`
+    INSERT INTO libraries (
+      created_at,
+      created_by,
+      url_id,
+      location,
+      title,
+      description,
+      osm_element_id
+    )
+    VALUES(
+      ${library.createdAt},
+      ${library.createdBy},
+      ${library.urlId},
+      ST_GeomFromGeoJSON(${location}::jsonb)::geography,
+      ${library.title},
+      ${library.description},
+      ${library.osmElementId}
+    )
+    RETURNING id;
+  `;
+  const row = rows[0];
+  assertColumn(row, 'id', 'number');
+  return row.id;
 }
 
 // Used to handle a request for a library. For example,
@@ -129,6 +159,8 @@ export async function readLibraryByUrlId(
   assertColumn(row, 'description', 'string', true);
   assertColumn(row, 'osm_element_id', 'number');
 
+  // A nifty hack here, where we treat the parsed JSON as equivalent to a row
+  // from a Postgres table. They're both an untyped object.
   const point = JSON.parse(row.location) as Row;
   assertColumn(point, 'coordinates', Array);
   if (point.coordinates.length != 2) {
