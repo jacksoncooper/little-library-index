@@ -1,7 +1,19 @@
-// Thrown when the contents of the database don't match what's expected.
+// These minimal error classes are taken from
+// "JavaScript: The Definitive Guide" 7th Edition (p. 305). Ideally, this
+// application doesn't throw because exception handling is invisible to control
+// flow. The following errors all represent programming errors, meaning that if
+// they trip something is seriously wrong. If this list continues to grow,
+// it's a sign I'm not thinking through the application design well.
 //
-// "JavaScript: The Definitive Guide" 7th Edition (p. 305)
+// Thrown when the contents of the database don't match what's expected. This
+// should never happen unless (1) the schema changes or (2) Bun's interface
+// with the database changes.
 export class QueryShapeError extends Error {}
+// Thrown when the TypeScript APIs that interface with the database cannot
+// execute the query because the arguments are invalid. Ideally, the type
+// system would prevent an invalid argument, but that's not always possible
+// in practice.
+export class InvalidQueryRequestError extends Error {}
 
 export type WithPrimaryKey<T> = { id: number } & T;
 

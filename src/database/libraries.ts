@@ -15,7 +15,7 @@ type OsmElementId = {
   elementId: bigint;
 };
 
-type Location = {
+export type Location = {
   latitude: number;
   longitude: number;
 };
@@ -184,4 +184,36 @@ export async function readLibraryByUrlId(
     description: row.description,
     osmElementId: row.osm_element_id,
   };
+}
+
+// The latitude and longitude coordinate system is funky in that it has a
+// discontinuity at the anti-meridian, which is a line of constant longitude at
+// 180°W (or 180°E). Usually, a negative latitude is equivalent to degrees south
+// (°S) and a negative longitude is equivalent to degrees west (°W). The line of
+// constant longitude at zero degrees runs through London.
+//
+// Imagine you're at a longitude of 160°E and travel 40°E. Your new longitude as
+// represented by this coordinate system is 160°W. As you cross the
+// anti-meridian at 180°E, the degrees start decreasing, which makes specifying
+// the interval that you traveled a non-increasing range.
+//
+//   [ 160°E, 160°W ] -> [ 160, -160 ]
+//
+// We adopt this convention for specifying ranges of longitude that cross the
+// anti-meridian.
+//
+//   [ 160°W, 160°E ] -> [ -160, 160 ]
+//
+// specifies the complement of the last interval.
+//
+export type BoundingBox = {
+  latitude: [south: number, north: number];
+  longitude: [start: number, end: number];
+};
+
+export async function readLibrariesByBoundingBox(
+  connection: SQL,
+  ranges: BoundingBox,
+): Promise<Library[]> {
+  return Promise.resolve([]);
 }

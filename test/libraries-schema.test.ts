@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import {
   Library,
+  Location,
+  readLibrariesByBoundingBox,
   readLibraryByUrlId,
   readOsmElementId,
   writeLibrary,
@@ -334,6 +336,31 @@ describe('writeLibrary()', () => {
       );
     }));
 
+  test('try to insert a library with a URL ID with a capital character', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const userId = await writeUser(db, { handle: 'mapadu' });
+      const osmElementId = await writeOsmElementId(db, {
+        elementType: 'node',
+        elementId: 10783380181n,
+      });
+      const library = {
+        createdAt: new Date(Date.UTC(2023, 3, 4, 1, 0, 7)),
+        createdBy: userId,
+        urlId: 'ao6wM2',
+        location: {
+          latitude: 37.7774749,
+          longitude: -122.4781917,
+        },
+        title: null,
+        description: null,
+        osmElementId: osmElementId,
+      };
+      await rejectsWithPostgresError(
+        writeLibrary(db, library),
+        postgresError.check_violation,
+      );
+    }));
+
   test('try to insert a library with a URL ID with an invalid length', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
       const userId = await writeUser(db, { handle: 'mapadu' });
@@ -357,5 +384,81 @@ describe('writeLibrary()', () => {
         writeLibrary(db, library),
         postgresError.string_data_right_truncation,
       );
+    }));
+});
+
+const makePoint = (function () {
+  let pointsGenerated = 0;
+  function go(name: string, userId: number, location: Location): Library {
+    pointsGenerated += 1;
+    return {
+      createdAt: new Date(Date.UTC(2026, 7, 16, 23, 57, 0)),
+      createdBy: userId,
+      // The URL ID has a unique constraint, so this lovely closure gets around
+      // it for easy geometry tests. This technique is from Section 8.6 of
+      // "JavaScript: The Definitive Guide" 7th Edition.
+      urlId: pointsGenerated.toString().padStart(6, '0'),
+      location,
+      title: name,
+      description: null,
+      osmElementId: null,
+    };
+  }
+  return go;
+})();
+
+describe('readLibrariesByBoundingBox()', () => {
+  test('read libraries within north-western hemisphere', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const userId = await writeUser(db, { handle: 'william' });
+      await writeLibrary(
+        db,
+        makePoint('A', userId, {
+          longitude: -165,
+          latitude: 50,
+        }),
+      );
+      await writeLibrary(
+        db,
+        makePoint('B', userId, {
+          longitude: -135,
+          latitude: 50,
+        }),
+      ); // North boundary!
+      await writeLibrary(
+        db,
+        makePoint('C', userId, {
+          longitude: -145,
+          latitude: 40,
+        }),
+      );
+      await writeLibrary(
+        db,
+        makePoint('D', userId, {
+          longitude: -150,
+          latitude: 35,
+        }),
+      );
+      await writeLibrary(
+        db,
+        makePoint('E', userId, {
+          longitude: -100,
+          latitude: 30,
+        }),
+      ); // Southeast corner!
+      await writeLibrary(
+        db,
+        makePoint('F', userId, {
+          longitude: -120,
+          latitude: 25,
+        }),
+      );
+      const libraries = await readLibrariesByBoundingBox(db, {
+        latitude: [30, 50],
+        longitude: [-160, -100],
+      });
+      expect(libraries).toHaveLength(4);
+      const names = new Set(libraries.map((l) => l.title));
+      expect(names).toEqual(new Set(['B', 'C', 'D', 'E']));
     }));
 });

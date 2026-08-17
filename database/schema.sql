@@ -129,6 +129,8 @@ CREATE TABLE inventory_events (
   handle_visible boolean NOT NULL default false
 );
 
+-- CREATE INDEX libraries_by_location ON libraries USING GIST (location);
+
 -- Because this index is built on a two-tuple, it allows us to efficiently
 -- select all inventory events for a given library, and not just for a given
 -- library and book pair. This works because the library comes first in the
