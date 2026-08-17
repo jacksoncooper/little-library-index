@@ -2,6 +2,15 @@ import { SQL } from 'bun';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import {
+  Library,
+  readLibraryByUrlId,
+  readOsmElementId,
+  writeLibrary,
+  writeOsmElementId,
+} from '../src/database/libraries';
+import { assertColumn, assertRowCount, Row } from '../src/database/types';
+import { writeUser } from '../src/database/users';
+import {
   createTestDatabase,
   deleteTestDatabase,
   postgresError,
@@ -9,16 +18,6 @@ import {
   testConnection,
   withDatabaseConnection,
 } from './connection';
-
-import { Row, assertColumn, assertRowCount } from '../src/database/types';
-import {
-  Library,
-  readLibraryByUrlId,
-  readOsmElementId,
-  writeLibrary,
-  writeOsmElementId,
-} from '../src/database/libraries';
-import { writeUser } from '../src/database/users';
 
 beforeEach(async () => createTestDatabase(testConnection.name));
 
@@ -169,7 +168,7 @@ function writeLibraries(connection: SQL): Promise<Row[]> {
     `;
 }
 
-function readLibraries(connection: SQL): Promise<Row[]>  {
+function readLibraries(connection: SQL): Promise<Row[]> {
   return connection<Row[]>`
     SELECT
       id,
@@ -226,7 +225,7 @@ describe('writeLibrary()', () => {
       const userId = await writeUser(db, { handle: 'mapadu' });
       const osmElementId = await writeOsmElementId(db, {
         elementType: 'node',
-        elementId: 10783380181n
+        elementId: 10783380181n,
       });
 
       const expectedLibrary: Library = {
@@ -275,6 +274,5 @@ describe('writeLibrary()', () => {
         description: libraryInDb.description,
         osmElementId: libraryInDb.osm_element_id,
       });
-    })
-  );
+    }));
 });

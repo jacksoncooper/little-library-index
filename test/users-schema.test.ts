@@ -1,9 +1,8 @@
 import { SQL } from 'bun';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { Row, assertColumn, assertRowCount } from '../src/database/types';
+import { assertColumn, assertRowCount, Row } from '../src/database/types';
 import { readUser, writeUser } from '../src/database/users';
-
 import {
   createTestDatabase,
   deleteTestDatabase,

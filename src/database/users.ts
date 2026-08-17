@@ -1,6 +1,6 @@
 import { SQL } from 'bun';
 
-import { Row, WithPrimaryKey, assertColumn, assertRowCount } from './types';
+import { assertColumn, assertRowCount, Row, WithPrimaryKey } from './types';
 
 export type User = {
   handle: string;

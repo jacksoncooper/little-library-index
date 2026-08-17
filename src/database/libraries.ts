@@ -1,10 +1,11 @@
 import { SQL } from 'bun';
+
 import {
+  assertColumn,
+  assertRowCount,
   QueryShapeError,
   Row,
   WithPrimaryKey,
-  assertColumn,
-  assertRowCount,
 } from './types';
 
 type OsmElementType = 'node' | 'relation' | 'way';
@@ -90,11 +91,8 @@ export async function writeLibrary(
   library: Library,
 ): Promise<number> {
   const location = {
-    "type": "Point",
-    "coordinates": [
-      library.location.longitude,
-      library.location.latitude
-    ]
+    type: 'Point',
+    coordinates: [library.location.longitude, library.location.latitude],
   };
   const rows = await connection<Row[]>`
     INSERT INTO libraries (
