@@ -10,7 +10,12 @@ import {
   writeLibrary,
   writeOsmElementId,
 } from '../src/database/libraries';
-import { assertColumn, assertRowCount, Row } from '../src/database/types';
+import {
+  assertColumn,
+  assertRowCount,
+  InvalidQueryRequestError,
+  Row,
+} from '../src/database/types';
 import { writeUser } from '../src/database/users';
 import {
   createTestDatabase,
@@ -411,54 +416,118 @@ describe('readLibrariesByBoundingBox()', () => {
   test('read libraries within north-western hemisphere', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
       const userId = await writeUser(db, { handle: 'william' });
-      await writeLibrary(
-        db,
-        makePoint('A', userId, {
-          longitude: -165,
-          latitude: 50,
-        }),
-      );
-      await writeLibrary(
-        db,
-        makePoint('B', userId, {
-          longitude: -135,
-          latitude: 50,
-        }),
-      ); // North boundary!
-      await writeLibrary(
-        db,
-        makePoint('C', userId, {
-          longitude: -145,
-          latitude: 40,
-        }),
-      );
-      await writeLibrary(
-        db,
-        makePoint('D', userId, {
-          longitude: -150,
-          latitude: 35,
-        }),
-      );
-      await writeLibrary(
-        db,
-        makePoint('E', userId, {
-          longitude: -100,
-          latitude: 30,
-        }),
-      ); // Southeast corner!
-      await writeLibrary(
-        db,
-        makePoint('F', userId, {
-          longitude: -120,
-          latitude: 25,
-        }),
-      );
+      const points = [
+        { label: 'A', longitude: -165, latitude: 50 },
+        { label: 'B', longitude: -135, latitude: 50 }, // North boundary!
+        { label: 'C', longitude: -145, latitude: 40 },
+        { label: 'D', longitude: -150, latitude: 35 },
+        { label: 'E', longitude: -100, latitude: 30 }, // Southeast corner!
+        { label: 'F', longitude: -120, latitude: 25 },
+      ];
+      for (const p of points) {
+        await writeLibrary(
+          db,
+          makePoint(p.label, userId, {
+            latitude: p.latitude,
+            longitude: p.longitude,
+          }),
+        );
+      }
       const libraries = await readLibrariesByBoundingBox(db, {
         latitude: [30, 50],
         longitude: [-160, -100],
       });
-      expect(libraries).toHaveLength(4);
       const names = new Set(libraries.map((l) => l.title));
       expect(names).toEqual(new Set(['B', 'C', 'D', 'E']));
     }));
+
+  test('read libraries within north-western hemisphere near north pole 🐧', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const userId = await writeUser(db, { handle: 'william' });
+      const points = [
+        { label: 'A', longitude: -120, latitude: 90 }, // Northwest corner!
+        { label: 'B', longitude: -150, latitude: 85 }, // Way out west!
+        { label: 'C', longitude: -105, latitude: 85 },
+        { label: 'D', longitude: -115, latitude: 80 }, // South boundary!
+      ];
+      for (const p of points) {
+        await writeLibrary(
+          db,
+          makePoint(p.label, userId, {
+            latitude: p.latitude,
+            longitude: p.longitude,
+          }),
+        );
+      }
+      const libraries = await readLibrariesByBoundingBox(db, {
+        latitude: [80, 90],
+        longitude: [-120, -100],
+      });
+      const names = new Set(libraries.map((l) => l.title));
+      expect(names).toEqual(new Set(['A', 'D', 'C']));
+    }));
+
+  test('read libraries crossing the anti-meridian 🐟', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const userId = await writeUser(db, { handle: 'william' });
+      const points = [
+        { label: 'A', longitude: 160, latitude: 10 }, // Northeast corner.
+        { label: 'B', longitude: -160, latitude: 5 },
+        { label: 'C', longitude: -150, latitude: 0 }, // West boundary!
+        { label: 'D', longitude: 150, latitude: -5 },
+        { label: 'E', longitude: -140, latitude: -10 },
+        { label: 'F', longitude: 180, latitude: -10 },
+      ];
+      for (const p of points) {
+        await writeLibrary(
+          db,
+          makePoint(p.label, userId, {
+            latitude: p.latitude,
+            longitude: p.longitude,
+          }),
+        );
+      }
+      const libraries = await readLibrariesByBoundingBox(db, {
+        latitude: [-10, 10],
+        longitude: [160, -150],
+      });
+      const names = new Set(libraries.map((l) => l.title));
+      expect(names).toEqual(new Set(['A', 'B', 'C', 'F']));
+    }));
+
+  test('try to read libraries with an invalid longitude range', () =>
+    withDatabaseConnection(testConnection.open(), (db) =>
+      Promise.resolve(
+        expect(
+          readLibrariesByBoundingBox(db, {
+            longitude: [-160, 190],
+            latitude: [30, 50],
+          }),
+        ).rejects.toThrow(InvalidQueryRequestError),
+      ),
+    ));
+
+  test('try to read libraries with an inverted longitude range', () =>
+    withDatabaseConnection(testConnection.open(), (db) =>
+      Promise.resolve(
+        expect(
+          readLibrariesByBoundingBox(db, {
+            longitude: [190, -160],
+            latitude: [30, 50],
+          }),
+        ).rejects.toThrow(InvalidQueryRequestError),
+      ),
+    ));
+
+  test('try to read libraries with an invalid latitude range', () =>
+    withDatabaseConnection(testConnection.open(), (db) =>
+      Promise.resolve(
+        expect(
+          readLibrariesByBoundingBox(db, {
+            longitude: [-160, -100],
+            latitude: [-95, 0],
+          }),
+        ).rejects.toThrow(InvalidQueryRequestError),
+      ),
+    ));
 });

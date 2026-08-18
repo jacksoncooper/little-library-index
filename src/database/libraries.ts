@@ -3,6 +3,7 @@ import { SQL } from 'bun';
 import {
   assertColumn,
   assertRowCount,
+  InvalidQueryRequestError,
   QueryShapeError,
   Row,
   WithPrimaryKey,
@@ -120,34 +121,7 @@ export async function writeLibrary(
   return row.id;
 }
 
-// Used to handle a request for a library. For example,
-//
-//   https://littlelibraryindex.com/library/o5c93c
-//
-export async function readLibraryByUrlId(
-  connection: SQL,
-  urlId: string,
-): Promise<WithPrimaryKey<Library> | null> {
-  const rows = await connection<Row[]>`
-    SELECT
-      id,
-      created_at,
-      created_by,
-      url_id,
-      ST_AsGeoJson(location) as location,
-      title,
-      description,
-      osm_element_id
-    FROM libraries
-    WHERE url_id = ${urlId}
-  `;
-
-  if (rows.length < 1) {
-    return null;
-  }
-  assertRowCount(rows, 1); // The `url_id` column is unique.
-
-  const row = rows[0];
+function rowToLibrary(row: Row): WithPrimaryKey<Library> {
   assertColumn(row, 'id', 'number');
   assertColumn(row, 'created_at', Date);
   assertColumn(row, 'created_by', 'number');
@@ -155,7 +129,7 @@ export async function readLibraryByUrlId(
   assertColumn(row, 'location', 'string');
   assertColumn(row, 'title', 'string', true);
   assertColumn(row, 'description', 'string', true);
-  assertColumn(row, 'osm_element_id', 'number');
+  assertColumn(row, 'osm_element_id', 'number', true);
 
   // A nifty hack here, where we treat the parsed JSON as equivalent to a row
   // from a Postgres table. They're both an untyped object.
@@ -184,6 +158,37 @@ export async function readLibraryByUrlId(
     description: row.description,
     osmElementId: row.osm_element_id,
   };
+}
+
+// Used to handle a request for a library. For example,
+//
+//   https://littlelibraryindex.com/library/o5c93c
+//
+export async function readLibraryByUrlId(
+  connection: SQL,
+  urlId: string,
+): Promise<WithPrimaryKey<Library> | null> {
+  const rows = await connection<Row[]>`
+    SELECT
+      id,
+      created_at,
+      created_by,
+      url_id,
+      ST_AsGeoJson(location) as location,
+      title,
+      description,
+      osm_element_id
+    FROM libraries
+    WHERE url_id = ${urlId}
+  `;
+
+  if (rows.length < 1) {
+    return null;
+  }
+  assertRowCount(rows, 1); // The `url_id` column is unique.
+
+  const row = rows[0];
+  return rowToLibrary(row);
 }
 
 // The latitude and longitude coordinate system is funky in that it has a
@@ -215,5 +220,82 @@ export async function readLibrariesByBoundingBox(
   connection: SQL,
   ranges: BoundingBox,
 ): Promise<Library[]> {
-  return Promise.resolve([]);
+  // TODO: You'll probably want to extract this validation logic to the HTTP
+  // layer eventually, because it will need to verify the operands to this
+  // function too.
+  const validateLongitudeRange = ([west, east]: [number, number]) => {
+    if (!(-180 <= west && west < east && east <= 180)) {
+      throw new InvalidQueryRequestError(
+        `longitude must a non-empty interval in the range [-180, 180], but got` +
+          ` -180 <= ${west}°W < ${east}°E < 180`,
+      );
+    }
+  };
+
+  const validateLatitudeRange = ([south, north]: [number, number]) => {
+    if (!(-90 <= south && south < north && north <= 90)) {
+      throw new InvalidQueryRequestError(
+        `latitude must a non-empty interval in the range [-90, 90], but got` +
+          ` -90 <= ${south}°S < ${north}°N < 90`,
+      );
+    }
+  };
+
+  const [start, end] = ranges.longitude;
+  if (start <= end) {
+    validateLongitudeRange([start, end]);
+  } else {
+    validateLongitudeRange([end, start]);
+  }
+
+  const [south, north] = ranges.latitude;
+  validateLatitudeRange([south, north]);
+
+  if (start < end) {
+    const rows = await connection<Row[]>`
+      SELECT
+        id,
+        created_at,
+        created_by,
+        url_id,
+        ST_AsGeoJson(location) as location,
+        title,
+        description,
+        osm_element_id
+      FROM libraries
+      WHERE
+        -- This cast is interesting. Sonnet 5 discovered that PostGIS' &&
+        -- operator with geography operands is only an approximate check of the
+        -- intersection between two bounding boxes that gets worse with an
+        -- absolute increase in latitude. The && operator used by the query
+        -- planner to exclude points as an initial pass. So, && must never
+        -- produce a false negative. Luckily, a point within a bounding box
+        -- doesn't require the extra power of the geometry type.
+        location::geometry
+        && ST_MakeEnvelope(${start}, ${south}, ${end}, ${north}, 4326)
+    `;
+    return rows.map((r) => rowToLibrary(r));
+  } else {
+    // The bounding box crosses the anti-meridian, and needs to be split into
+    // two calls to `ST_MakeEnvelope`.
+    const rows = await connection<Row[]>`
+      SELECT
+        id,
+        created_at,
+        created_by,
+        url_id,
+        ST_AsGeoJson(location) as location,
+        title,
+        description,
+        osm_element_id
+      FROM libraries
+      WHERE
+        (location::geometry
+          && ST_MakeEnvelope(-180, ${south}, ${end}, ${north}, 4326))
+        OR
+        (location::geometry
+          && ST_MakeEnvelope(${start}, ${south}, 180, ${north}, 4326))
+    `;
+    return rows.map((r) => rowToLibrary(r));
+  }
 }
