@@ -1,14 +1,27 @@
 import { $, SQL } from 'bun';
 import { expect } from 'bun:test';
 
-export const testConnection = {
-  name: 'little-library-index-test',
-  open: () =>
-    new SQL({
-      adapter: 'postgres',
-      database: testConnection.name,
-    }),
+const testConnection = (suffix: string) => {
+  // The name of the database must be unique both across invocations of the
+  // `bun` process, and also between test modules executing asynchronously.
+  const name = `little-library-index-${process.pid}-${suffix}`;
+  return {
+    name,
+    open: () =>
+      new SQL({
+        adapter: 'postgres',
+        database: name,
+      }),
+  };
 };
+
+export const makeConnection = (function () {
+  let databaseInstance = 0;
+  return function () {
+    databaseInstance += 1;
+    return testConnection(databaseInstance.toString().padStart(3, '0'));
+  };
+})();
 
 export async function createTestDatabase(name: string): Promise<$.ShellOutput> {
   // An unusual design choice of Bun's shell API is that Promises constructed

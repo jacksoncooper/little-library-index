@@ -20,11 +20,13 @@ import { writeUser } from '../src/database/users';
 import {
   createTestDatabase,
   deleteTestDatabase,
+  makeConnection,
   postgresError,
   rejectsWithPostgresError,
-  testConnection,
   withDatabaseConnection,
 } from './connection';
+
+const testConnection = makeConnection();
 
 beforeEach(async () => createTestDatabase(testConnection.name));
 
@@ -394,7 +396,7 @@ describe('writeLibrary()', () => {
 
 const makePoint = (function () {
   let pointsGenerated = 0;
-  function go(name: string, userId: number, location: Location): Library {
+  return function (name: string, userId: number, location: Location): Library {
     pointsGenerated += 1;
     return {
       createdAt: new Date(Date.UTC(2026, 7, 16, 23, 57, 0)),
@@ -408,8 +410,7 @@ const makePoint = (function () {
       description: null,
       osmElementId: null,
     };
-  }
-  return go;
+  };
 })();
 
 describe('readLibrariesByBoundingBox()', () => {

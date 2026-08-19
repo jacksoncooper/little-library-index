@@ -6,11 +6,13 @@ import { readUser, writeUser } from '../src/database/users';
 import {
   createTestDatabase,
   deleteTestDatabase,
+  makeConnection,
   postgresError,
   rejectsWithPostgresError,
-  testConnection,
   withDatabaseConnection,
 } from './connection';
+
+const testConnection = makeConnection();
 
 beforeEach(async () => createTestDatabase(testConnection.name));
 
