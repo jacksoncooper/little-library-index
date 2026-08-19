@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   Library,
   Location,
+  readLibrariesByBoundingBox,
   readLibraryByUrlId,
   readOsmElementId,
   readPinsByBoundingBox,
@@ -535,4 +536,58 @@ describe('readPinsByBoundingBox()', () => {
         ).rejects.toThrow(InvalidQueryRequestError),
       ),
     ));
+});
+
+// TODO: Need tests for (1) a bounding box that contains no libraries (2) when
+// a cursor is passed to the query, and especially how it breaks ties when
+// multiple libraries are at the same distance.
+
+describe('readLibrariesByBoundingBox()', () => {
+  test('read 4 libraries nearest to the origin', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const userId = await writeUser(db, { handle: 'william' });
+      const points = [
+        { label: urlId('f'), longitude: -10, latitude: -15 },
+        // Not in the bounding box.
+        { label: urlId('a'), longitude: 0, latitude: 40 },
+        // Point F ties with Point B for distance, so to make sure ties are
+        // broken by URL ID and not primary key, insert Point F first.
+        { label: urlId('b'), longitude: -10, latitude: 15 },
+        // In the bounding box, but the fifth nearest.
+        { label: urlId('c'), longitude: 30, latitude: 15 },
+        { label: urlId('d'), longitude: 0, latitude: 0 },
+        { label: urlId('e'), longitude: 30, latitude: 0 },
+        { label: urlId('g'), longitude: 20, latitude: -20 },
+      ];
+      for (const p of points) {
+        await writeLibrary(
+          db,
+          makePoint(p.label, userId, {
+            latitude: p.latitude,
+            longitude: p.longitude,
+          }),
+        );
+      }
+      const result = await readLibrariesByBoundingBox(
+        db,
+        { latitude: [-15, 20], longitude: [-15, 35] },
+        { latitude: 0, longitude: 0 },
+        4,
+      );
+      expect(result).not.toBeNull();
+      const labels = new Set(result!.libraries.map((p) => p.urlId));
+      expect(labels).toEqual(
+        // With PostGIS' spheroid model, the north and south hemispheres are
+        // symmetric.
+        new Set([urlId('d'), urlId('b'), urlId('f'), urlId('e')]),
+      );
+      expect(result!.libraries[0].urlId).toBe(urlId('d'));
+      // Ties are broken by lexicographic comparison of URL IDs, and
+      // `urlId('b') < urlId('f')`.
+      expect(result!.libraries[1].urlId).toBe(urlId('b'));
+      expect(result!.libraries[2].urlId).toBe(urlId('f'));
+      expect(result!.libraries[3].urlId).toBe(urlId('e'));
+
+      expect(result!.cursor).toBe(urlId('e'));
+    }));
 });

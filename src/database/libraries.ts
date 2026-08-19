@@ -96,10 +96,6 @@ export async function writeLibrary(
   connection: SQL,
   library: Library,
 ): Promise<number> {
-  const location = {
-    type: 'Point',
-    coordinates: [library.location.longitude, library.location.latitude],
-  };
   const rows = await connection<Row[]>`
     INSERT INTO libraries (
       created_at,
@@ -114,7 +110,7 @@ export async function writeLibrary(
       ${library.createdAt},
       ${library.createdBy},
       ${library.urlId},
-      ST_GeomFromGeoJSON(${location}::jsonb)::geography,
+      ${locationToGeography(connection, library.location)},
       ${library.title},
       ${library.description},
       ${library.osmElementId}
@@ -124,6 +120,17 @@ export async function writeLibrary(
   const row = rows[0];
   assertColumn(row, 'id', 'number');
   return row.id;
+}
+
+function locationToGeography(
+  connection: SQL,
+  location: Location,
+): SQL.Query<unknown> {
+  const point = {
+    type: 'Point',
+    coordinates: [location.longitude, location.latitude],
+  };
+  return connection`ST_GeomFromGeoJSON(${point}::jsonb)::geography`;
 }
 
 function geoJsonToLocation(json: string): Location {
@@ -238,8 +245,8 @@ export type BoundingBox = {
 async function readLibraryTuplesByBoundingBox<T>(
   // This function works on the `location` column of the `libraries` table, so
   // `librariesTuple` must include it.
-  libraryTuples: (db: SQL) => SQL.Query<Row[]>,
-  filterClause: (db: SQL) => SQL.Query<Row[]>,
+  libraryTuples: (db: SQL) => SQL.Query<unknown>,
+  filterClause: (db: SQL) => SQL.Query<unknown>,
   transform: (row: Row) => T,
   connection: SQL,
   ranges: BoundingBox,
@@ -289,7 +296,7 @@ async function readLibraryTuplesByBoundingBox<T>(
         -- doesn't require the extra power of the geometry type.
         location::geometry
         && ST_MakeEnvelope(${start}, ${south}, ${end}, ${north}, 4326)
-      ${filterClause(connection)}
+      ${filterClause(connection)};
     `;
     return rows.map((r) => transform(r));
   } else {
@@ -304,7 +311,7 @@ async function readLibraryTuplesByBoundingBox<T>(
         OR
         (location::geometry
           && ST_MakeEnvelope(${start}, ${south}, 180, ${north}, 4326))
-      ${filterClause(connection)}
+        ${filterClause(connection)};
     `;
     return rows.map((r) => transform(r));
   }
@@ -325,5 +332,78 @@ export function readPinsByBoundingBox(
     rowToPin,
     connection,
     ranges,
+  );
+}
+
+export type LibrariesByBoundingBox = {
+  libraries: Library[];
+  // The URL ID of the last library returned by the corresponding query.
+  cursor: string;
+};
+
+export function readLibrariesByBoundingBox(
+  connection: SQL,
+  ranges: BoundingBox,
+  origin: Location,
+  limit: number,
+  cursor: string | null = null,
+): Promise<LibrariesByBoundingBox | null> {
+  // TODO: This function is technically correct but its fragments inject at
+  // delicate places in the bounding box query. Rethink this. (1) The WITH query
+  // is injected in front of the SELECT statement and (2) the WHERE clause
+  // is modified with both a conjunction and ORDER and LIMIT clauses. o:
+  // Don't use an ORM they said, it would be fun, they said.
+  const withCursor = (fragment: SQL.Query<unknown>): SQL.Query<unknown> =>
+    cursor ? fragment : connection``;
+  const originGeography = locationToGeography(connection, origin);
+  return readLibraryTuplesByBoundingBox(
+    (db) => db`
+      ${withCursor(connection`
+        WITH cursor_distance AS (
+          SELECT
+            ST_Distance(
+              ${originGeography},
+              location
+            ) AS from_origin
+          FROM libraries
+          WHERE libraries.url_id = ${cursor}
+        )
+      `)}
+      SELECT
+        id,
+        created_at,
+        created_by,
+        url_id,
+        ST_AsGeoJson(location) as location,
+        title,
+        description,
+        osm_element_id,
+        ST_Distance(
+          ${originGeography},
+          location
+        ) as distance
+      `,
+    (db) => db`
+      ${withCursor(connection`
+        AND
+          ST_Distance(
+            ${originGeography},
+            location
+          ) > cursor_distance.from_origin
+        AND url_id > ${cursor}
+      `)}
+      ORDER BY distance, url_id
+      LIMIT ${limit};
+    `,
+    rowToLibrary,
+    connection,
+    ranges,
+  ).then((libraries) =>
+    libraries.length > 0
+      ? {
+          libraries,
+          cursor: libraries[libraries.length - 1].urlId,
+        }
+      : null,
   );
 }
