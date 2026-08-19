@@ -21,6 +21,11 @@ export type Location = {
   longitude: number;
 };
 
+export type Pin = {
+  urlId: string;
+  location: Location;
+};
+
 export type Library = {
   createdAt: Date;
   createdBy: number;
@@ -121,19 +126,10 @@ export async function writeLibrary(
   return row.id;
 }
 
-function rowToLibrary(row: Row): WithPrimaryKey<Library> {
-  assertColumn(row, 'id', 'number');
-  assertColumn(row, 'created_at', Date);
-  assertColumn(row, 'created_by', 'number');
-  assertColumn(row, 'url_id', 'string');
-  assertColumn(row, 'location', 'string');
-  assertColumn(row, 'title', 'string', true);
-  assertColumn(row, 'description', 'string', true);
-  assertColumn(row, 'osm_element_id', 'number', true);
-
+function geoJsonToLocation(json: string): Location {
   // A nifty hack here, where we treat the parsed JSON as equivalent to a row
   // from a Postgres table. They're both an untyped object.
-  const point = JSON.parse(row.location) as Row;
+  const point = JSON.parse(json) as Row;
   assertColumn(point, 'coordinates', Array);
   if (point.coordinates.length != 2) {
     throw new QueryShapeError(
@@ -147,13 +143,36 @@ function rowToLibrary(row: Row): WithPrimaryKey<Library> {
   };
   assertColumn(location, 'latitude', 'number');
   assertColumn(location, 'longitude', 'number');
+  return location;
+}
+
+function rowToPin(row: Row): WithPrimaryKey<Pin> {
+  assertColumn(row, 'id', 'number');
+  assertColumn(row, 'url_id', 'string');
+  assertColumn(row, 'location', 'string');
+  return {
+    id: row.id,
+    urlId: row.url_id,
+    location: geoJsonToLocation(row.location),
+  };
+}
+
+function rowToLibrary(row: Row): WithPrimaryKey<Library> {
+  assertColumn(row, 'id', 'number');
+  assertColumn(row, 'created_at', Date);
+  assertColumn(row, 'created_by', 'number');
+  assertColumn(row, 'url_id', 'string');
+  assertColumn(row, 'location', 'string');
+  assertColumn(row, 'title', 'string', true);
+  assertColumn(row, 'description', 'string', true);
+  assertColumn(row, 'osm_element_id', 'number', true);
 
   return {
     id: row.id,
     createdAt: row.created_at,
     createdBy: row.created_by,
     urlId: row.url_id,
-    location,
+    location: geoJsonToLocation(row.location),
     title: row.title,
     description: row.description,
     osmElementId: row.osm_element_id,
@@ -216,10 +235,15 @@ export type BoundingBox = {
   longitude: [start: number, end: number];
 };
 
-export async function readLibrariesByBoundingBox(
+async function readLibraryTuplesByBoundingBox<T>(
+  // This function works on the `location` column of the `libraries` table, so
+  // `librariesTuple` must include it.
+  libraryTuples: (db: SQL) => SQL.Query<Row[]>,
+  filterClause: (db: SQL) => SQL.Query<Row[]>,
+  transform: (row: Row) => T,
   connection: SQL,
   ranges: BoundingBox,
-): Promise<Library[]> {
+): Promise<T[]> {
   // TODO: You'll probably want to extract this validation logic to the HTTP
   // layer eventually, because it will need to verify the operands to this
   // function too.
@@ -253,15 +277,7 @@ export async function readLibrariesByBoundingBox(
 
   if (start < end) {
     const rows = await connection<Row[]>`
-      SELECT
-        id,
-        created_at,
-        created_by,
-        url_id,
-        ST_AsGeoJson(location) as location,
-        title,
-        description,
-        osm_element_id
+      ${libraryTuples(connection)}
       FROM libraries
       WHERE
         -- This cast is interesting. Sonnet 5 discovered that PostGIS' &&
@@ -273,21 +289,14 @@ export async function readLibrariesByBoundingBox(
         -- doesn't require the extra power of the geometry type.
         location::geometry
         && ST_MakeEnvelope(${start}, ${south}, ${end}, ${north}, 4326)
+      ${filterClause(connection)}
     `;
-    return rows.map((r) => rowToLibrary(r));
+    return rows.map((r) => transform(r));
   } else {
     // The bounding box crosses the anti-meridian, and needs to be split into
     // two calls to `ST_MakeEnvelope`.
     const rows = await connection<Row[]>`
-      SELECT
-        id,
-        created_at,
-        created_by,
-        url_id,
-        ST_AsGeoJson(location) as location,
-        title,
-        description,
-        osm_element_id
+      ${libraryTuples(connection)}
       FROM libraries
       WHERE
         (location::geometry
@@ -295,7 +304,26 @@ export async function readLibrariesByBoundingBox(
         OR
         (location::geometry
           && ST_MakeEnvelope(${start}, ${south}, 180, ${north}, 4326))
+      ${filterClause(connection)}
     `;
-    return rows.map((r) => rowToLibrary(r));
+    return rows.map((r) => transform(r));
   }
+}
+
+export function readPinsByBoundingBox(
+  connection: SQL,
+  ranges: BoundingBox,
+): Promise<Pin[]> {
+  return readLibraryTuplesByBoundingBox(
+    (db) => db`
+    SELECT
+      id,
+      url_id,
+      ST_AsGeoJson(location) as location
+    `,
+    (db) => db``,
+    rowToPin,
+    connection,
+    ranges,
+  );
 }

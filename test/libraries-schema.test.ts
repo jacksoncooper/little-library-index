@@ -4,9 +4,9 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   Library,
   Location,
-  readLibrariesByBoundingBox,
   readLibraryByUrlId,
   readOsmElementId,
+  readPinsByBoundingBox,
   writeLibrary,
   writeOsmElementId,
 } from '../src/database/libraries';
@@ -394,36 +394,36 @@ describe('writeLibrary()', () => {
     }));
 });
 
-const makePoint = (function () {
-  let pointsGenerated = 0;
-  return function (name: string, userId: number, location: Location): Library {
-    pointsGenerated += 1;
-    return {
-      createdAt: new Date(Date.UTC(2026, 7, 16, 23, 57, 0)),
-      createdBy: userId,
-      // The URL ID has a unique constraint, so this lovely closure gets around
-      // it for easy geometry tests. This technique is from Section 8.6 of
-      // "JavaScript: The Definitive Guide" 7th Edition.
-      urlId: pointsGenerated.toString().padStart(6, '0'),
-      location,
-      title: name,
-      description: null,
-      osmElementId: null,
-    };
-  };
-})();
+function urlId(label: string): string {
+  return label.padStart(6, '0');
+}
 
-describe('readLibrariesByBoundingBox()', () => {
-  test('read libraries within north-western hemisphere', () =>
+function makePoint(urlId: string, userId: number, location: Location) {
+  return {
+    createdAt: new Date(Date.UTC(2026, 7, 16, 23, 57, 0)),
+    createdBy: userId,
+    // The URL ID has a unique constraint, so this lovely closure gets around
+    // it for easy geometry tests. This technique is from Section 8.6 of
+    // "JavaScript: The Definitive Guide" 7th Edition.
+    urlId,
+    location,
+    title: null,
+    description: null,
+    osmElementId: null,
+  };
+}
+
+describe('readPinsByBoundingBox()', () => {
+  test('read pins within north-western hemisphere', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
       const userId = await writeUser(db, { handle: 'william' });
       const points = [
-        { label: 'A', longitude: -165, latitude: 50 },
-        { label: 'B', longitude: -135, latitude: 50 }, // North boundary!
-        { label: 'C', longitude: -145, latitude: 40 },
-        { label: 'D', longitude: -150, latitude: 35 },
-        { label: 'E', longitude: -100, latitude: 30 }, // Southeast corner!
-        { label: 'F', longitude: -120, latitude: 25 },
+        { label: urlId('a'), longitude: -165, latitude: 50 },
+        { label: urlId('b'), longitude: -135, latitude: 50 }, // North boundary!
+        { label: urlId('c'), longitude: -145, latitude: 40 },
+        { label: urlId('d'), longitude: -150, latitude: 35 },
+        { label: urlId('e'), longitude: -100, latitude: 30 }, // Southeast corner!
+        { label: urlId('f'), longitude: -120, latitude: 25 },
       ];
       for (const p of points) {
         await writeLibrary(
@@ -434,22 +434,24 @@ describe('readLibrariesByBoundingBox()', () => {
           }),
         );
       }
-      const libraries = await readLibrariesByBoundingBox(db, {
+      const pins = await readPinsByBoundingBox(db, {
         latitude: [30, 50],
         longitude: [-160, -100],
       });
-      const names = new Set(libraries.map((l) => l.title));
-      expect(names).toEqual(new Set(['B', 'C', 'D', 'E']));
+      const labels = new Set(pins.map((p) => p.urlId));
+      expect(labels).toEqual(
+        new Set([urlId('b'), urlId('c'), urlId('d'), urlId('e')]),
+      );
     }));
 
-  test('read libraries within north-western hemisphere near north pole 🐧', () =>
+  test('read pins within north-western hemisphere near north pole 🐧', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
       const userId = await writeUser(db, { handle: 'william' });
       const points = [
-        { label: 'A', longitude: -120, latitude: 90 }, // Northwest corner!
-        { label: 'B', longitude: -150, latitude: 85 }, // Way out west!
-        { label: 'C', longitude: -105, latitude: 85 },
-        { label: 'D', longitude: -115, latitude: 80 }, // South boundary!
+        { label: urlId('a'), longitude: -120, latitude: 90 }, // Northwest corner!
+        { label: urlId('b'), longitude: -150, latitude: 85 }, // Way out west!
+        { label: urlId('c'), longitude: -105, latitude: 85 },
+        { label: urlId('d'), longitude: -115, latitude: 80 }, // South boundary!
       ];
       for (const p of points) {
         await writeLibrary(
@@ -460,24 +462,24 @@ describe('readLibrariesByBoundingBox()', () => {
           }),
         );
       }
-      const libraries = await readLibrariesByBoundingBox(db, {
+      const pins = await readPinsByBoundingBox(db, {
         latitude: [80, 90],
         longitude: [-120, -100],
       });
-      const names = new Set(libraries.map((l) => l.title));
-      expect(names).toEqual(new Set(['A', 'D', 'C']));
+      const labels = new Set(pins.map((p) => p.urlId));
+      expect(labels).toEqual(new Set([urlId('a'), urlId('d'), urlId('c')]));
     }));
 
-  test('read libraries crossing the anti-meridian 🐟', () =>
+  test('read pins crossing the anti-meridian 🐟', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
       const userId = await writeUser(db, { handle: 'william' });
       const points = [
-        { label: 'A', longitude: 160, latitude: 10 }, // Northeast corner.
-        { label: 'B', longitude: -160, latitude: 5 },
-        { label: 'C', longitude: -150, latitude: 0 }, // West boundary!
-        { label: 'D', longitude: 150, latitude: -5 },
-        { label: 'E', longitude: -140, latitude: -10 },
-        { label: 'F', longitude: 180, latitude: -10 },
+        { label: urlId('a'), longitude: 160, latitude: 10 }, // Northeast corner.
+        { label: urlId('b'), longitude: -160, latitude: 5 },
+        { label: urlId('c'), longitude: -150, latitude: 0 }, // West boundary!
+        { label: urlId('d'), longitude: 150, latitude: -5 },
+        { label: urlId('e'), longitude: -140, latitude: -10 },
+        { label: urlId('f'), longitude: 180, latitude: -10 },
       ];
       for (const p of points) {
         await writeLibrary(
@@ -488,19 +490,21 @@ describe('readLibrariesByBoundingBox()', () => {
           }),
         );
       }
-      const libraries = await readLibrariesByBoundingBox(db, {
+      const pins = await readPinsByBoundingBox(db, {
         latitude: [-10, 10],
         longitude: [160, -150],
       });
-      const names = new Set(libraries.map((l) => l.title));
-      expect(names).toEqual(new Set(['A', 'B', 'C', 'F']));
+      const labels = new Set(pins.map((p) => p.urlId));
+      expect(labels).toEqual(
+        new Set([urlId('a'), urlId('b'), urlId('c'), urlId('f')]),
+      );
     }));
 
-  test('try to read libraries with an invalid longitude range', () =>
+  test('try to read pins with an invalid longitude range', () =>
     withDatabaseConnection(testConnection.open(), (db) =>
       Promise.resolve(
         expect(
-          readLibrariesByBoundingBox(db, {
+          readPinsByBoundingBox(db, {
             longitude: [-160, 190],
             latitude: [30, 50],
           }),
@@ -508,11 +512,11 @@ describe('readLibrariesByBoundingBox()', () => {
       ),
     ));
 
-  test('try to read libraries with an inverted longitude range', () =>
+  test('try to read pins with an inverted longitude range', () =>
     withDatabaseConnection(testConnection.open(), (db) =>
       Promise.resolve(
         expect(
-          readLibrariesByBoundingBox(db, {
+          readPinsByBoundingBox(db, {
             longitude: [190, -160],
             latitude: [30, 50],
           }),
@@ -520,11 +524,11 @@ describe('readLibrariesByBoundingBox()', () => {
       ),
     ));
 
-  test('try to read libraries with an invalid latitude range', () =>
+  test('try to read pins with an invalid latitude range', () =>
     withDatabaseConnection(testConnection.open(), (db) =>
       Promise.resolve(
         expect(
-          readLibrariesByBoundingBox(db, {
+          readPinsByBoundingBox(db, {
             longitude: [-160, -100],
             latitude: [-95, 0],
           }),
