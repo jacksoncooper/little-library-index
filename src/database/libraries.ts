@@ -26,6 +26,8 @@ export type Pin = {
   location: Location;
 };
 
+export type WithDistance<T> = T & { distance: number };
+
 export type Library = {
   createdAt: Date;
   createdBy: number;
@@ -122,7 +124,7 @@ export async function writeLibrary(
   return row.id;
 }
 
-function locationToGeography(
+export function locationToGeography(
   connection: SQL,
   location: Location,
 ): SQL.Query<unknown> {
@@ -186,6 +188,15 @@ function rowToLibrary(row: Row): WithPrimaryKey<Library> {
   };
 }
 
+function rowToLibraryWithDistance(
+  row: Row,
+): WithPrimaryKey<WithDistance<Library>> {
+  assertColumn(row, 'distance', 'number');
+  return {
+    ...rowToLibrary(row),
+    distance: row.distance,
+  };
+}
 // Used to handle a request for a library. For example,
 //
 //   https://littlelibraryindex.com/library/o5c93c
@@ -336,39 +347,72 @@ export function readPinsByBoundingBox(
 }
 
 export type LibrariesByBoundingBox = {
-  libraries: Library[];
+  libraries: WithDistance<Library>[];
   // The URL ID of the last library returned by the corresponding query.
   cursor: string;
 };
 
-export function readLibrariesByBoundingBox(
+export async function spheroidDistance(
+  db: SQL,
+  from: Location,
+  to: Location,
+): Promise<number> {
+  const rows = await db<Row[]>`
+    SELECT
+      ST_Distance(
+        ${locationToGeography(db, from)},
+        ${locationToGeography(db, to)}
+      ) as distance;
+  `;
+  assertRowCount(rows, 1);
+  assertColumn(rows[0], 'distance', 'number');
+  return rows[0].distance;
+}
+
+export async function readLibrariesByBoundingBox(
   connection: SQL,
   ranges: BoundingBox,
   origin: Location,
   limit: number,
   cursor: string | null = null,
 ): Promise<LibrariesByBoundingBox | null> {
-  // TODO: This function is technically correct but its fragments inject at
-  // delicate places in the bounding box query. Rethink this. (1) The WITH query
-  // is injected in front of the SELECT statement and (2) the WHERE clause
-  // is modified with both a conjunction and ORDER and LIMIT clauses. o:
-  // Don't use an ORM they said, it would be fun, they said.
-  const withCursor = (fragment: SQL.Query<unknown>): SQL.Query<unknown> =>
-    cursor ? fragment : connection``;
+  // TODO: This function composes 3 round trips from the web server to the
+  // PostgreSQL server. This is much more legible than the many SQL fragments
+  // of d9b89, but still incorrect and not very legible. It's incorrect because
+  // it first checks to see that the library designated by `cursor` exists,
+  // but `cursor` could be deleted after the first round trip. The resulting
+  // bound box query will operate against a URL ID that no longer exists,
+  // when the premise of the query has been violated. We'll still accept 3
+  // round trips to avoid premature optimization, but they need some level
+  // of transaction isolation.
+
   const originGeography = locationToGeography(connection, origin);
+
+  let filterClause = connection`
+      ORDER BY distance, url_id
+      LIMIT ${limit};
+  `;
+  if (cursor !== null) {
+    const library = await readLibraryByUrlId(connection, cursor);
+    if (library === null) {
+      return null;
+    }
+    const cursorDistance = await spheroidDistance(
+      connection,
+      origin,
+      library.location,
+    );
+    filterClause = connection`
+        AND
+          (ST_Distance(${originGeography}, location), url_id)
+            > (${cursorDistance}, ${cursor})
+      ORDER BY distance, url_id
+      LIMIT ${limit};
+    `;
+  }
+
   return readLibraryTuplesByBoundingBox(
     (db) => db`
-      ${withCursor(connection`
-        WITH cursor_distance AS (
-          SELECT
-            ST_Distance(
-              ${originGeography},
-              location
-            ) AS from_origin
-          FROM libraries
-          WHERE libraries.url_id = ${cursor}
-        )
-      `)}
       SELECT
         id,
         created_at,
@@ -383,19 +427,8 @@ export function readLibrariesByBoundingBox(
           location
         ) as distance
       `,
-    (db) => db`
-      ${withCursor(connection`
-        AND
-          ST_Distance(
-            ${originGeography},
-            location
-          ) > cursor_distance.from_origin
-        AND url_id > ${cursor}
-      `)}
-      ORDER BY distance, url_id
-      LIMIT ${limit};
-    `,
-    rowToLibrary,
+    () => filterClause,
+    rowToLibraryWithDistance,
     connection,
     ranges,
   ).then((libraries) =>
