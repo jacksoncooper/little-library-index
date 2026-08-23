@@ -257,7 +257,8 @@ async function readLibraryTuplesByBoundingBox<T>(
   // This function works on the `location` column of the `libraries` table, so
   // `librariesTuple` must include it.
   libraryTuples: (db: SQL) => SQL.Query<unknown>,
-  filterClause: (db: SQL) => SQL.Query<unknown>,
+  whereConjunction: (db: SQL) => SQL.Query<unknown>,
+  orderByClause: (db: SQL) => SQL.Query<unknown>,
   transform: (row: Row) => T,
   connection: SQL,
   ranges: BoundingBox,
@@ -305,9 +306,10 @@ async function readLibraryTuplesByBoundingBox<T>(
         -- planner to exclude points as an initial pass. So, && must never
         -- produce a false negative. Luckily, a point within a bounding box
         -- doesn't require the extra power of the geometry type.
-        location::geometry
-        && ST_MakeEnvelope(${start}, ${south}, ${end}, ${north}, 4326)
-      ${filterClause(connection)};
+        (location::geometry
+          && ST_MakeEnvelope(${start}, ${south}, ${end}, ${north}, 4326))
+        ${whereConjunction(connection)}
+      ${orderByClause(connection)};
     `;
     return rows.map((r) => transform(r));
   } else {
@@ -316,13 +318,15 @@ async function readLibraryTuplesByBoundingBox<T>(
     const rows = await connection<Row[]>`
       ${libraryTuples(connection)}
       FROM libraries
-      WHERE
-        (location::geometry
-          && ST_MakeEnvelope(-180, ${south}, ${end}, ${north}, 4326))
-        OR
-        (location::geometry
-          && ST_MakeEnvelope(${start}, ${south}, 180, ${north}, 4326))
-        ${filterClause(connection)};
+      WHERE (
+          (location::geometry
+            && ST_MakeEnvelope(-180, ${south}, ${end}, ${north}, 4326))
+          OR
+          (location::geometry
+            && ST_MakeEnvelope(${start}, ${south}, 180, ${north}, 4326))
+        )
+        ${whereConjunction(connection)}
+      ${orderByClause(connection)};
     `;
     return rows.map((r) => transform(r));
   }
@@ -340,6 +344,7 @@ export function readPinsByBoundingBox(
       ST_AsGeoJson(location) as location
     `,
     (db) => db``,
+    (db) => db``,
     rowToPin,
     connection,
     ranges,
@@ -347,9 +352,9 @@ export function readPinsByBoundingBox(
 }
 
 export type LibrariesByBoundingBox = {
-  libraries: WithDistance<Library>[];
+  libraries: WithPrimaryKey<WithDistance<Library>>[];
   // The URL ID of the last library returned by the corresponding query.
-  cursor: string;
+  cursor: string | null;
 };
 
 export async function spheroidDistance(
@@ -376,67 +381,63 @@ export async function readLibrariesByBoundingBox(
   limit: number,
   cursor: string | null = null,
 ): Promise<LibrariesByBoundingBox | null> {
-  // TODO: This function composes 3 round trips from the web server to the
-  // PostgreSQL server. This is much more legible than the many SQL fragments
-  // of d9b89, but still incorrect and not very legible. It's incorrect because
-  // it first checks to see that the library designated by `cursor` exists,
-  // but `cursor` could be deleted after the first round trip. The resulting
-  // bound box query will operate against a URL ID that no longer exists,
-  // when the premise of the query has been violated. We'll still accept 3
-  // round trips to avoid premature optimization, but they need some level
-  // of transaction isolation.
+  // This function composes 3 round trips from the web server to the PostgreSQL
+  // server. This is much more legible than the many SQL fragments of d9b89.
+  // We'll accept 3 round trips to avoid premature optimization, but they need
+  // some level of transaction isolation.
 
   const originGeography = locationToGeography(connection, origin);
 
-  let filterClause = connection`
-      ORDER BY distance, url_id
-      LIMIT ${limit};
-  `;
-  if (cursor !== null) {
-    const library = await readLibraryByUrlId(connection, cursor);
-    if (library === null) {
-      return null;
-    }
-    const cursorDistance = await spheroidDistance(
-      connection,
-      origin,
-      library.location,
-    );
-    filterClause = connection`
-        AND
-          (ST_Distance(${originGeography}, location), url_id)
-            > (${cursorDistance}, ${cursor})
-      ORDER BY distance, url_id
-      LIMIT ${limit};
-    `;
-  }
+  // This is PostgreSQL's word for snapshot isolation. This is a read-only
+  // query, so we want to be guaranteed that the data that's read is from a
+  // "snapshot" of the database at a point in time.
+  return connection.begin(
+    'ISOLATION LEVEL REPEATABLE READ',
+    async (transaction) => {
+      let cursorDistance: number | null = null;
 
-  return readLibraryTuplesByBoundingBox(
-    (db) => db`
-      SELECT
-        id,
-        created_at,
-        created_by,
-        url_id,
-        ST_AsGeoJson(location) as location,
-        title,
-        description,
-        osm_element_id,
-        ST_Distance(
-          ${originGeography},
-          location
-        ) as distance
-      `,
-    () => filterClause,
-    rowToLibraryWithDistance,
-    connection,
-    ranges,
-  ).then((libraries) =>
-    libraries.length > 0
-      ? {
-          libraries,
-          cursor: libraries[libraries.length - 1].urlId,
+      if (cursor !== null) {
+        const library = await readLibraryByUrlId(transaction, cursor);
+        if (library === null) {
+          return null;
         }
-      : null,
+        cursorDistance = await spheroidDistance(
+          transaction,
+          origin,
+          library.location,
+        );
+      }
+
+      return readLibraryTuplesByBoundingBox(
+        (db) => db`
+        SELECT
+          id,
+          created_at,
+          created_by,
+          url_id,
+          ST_AsGeoJson(location) as location,
+          title,
+          description,
+          osm_element_id,
+          ST_Distance(${originGeography}, location) as distance
+        `,
+        (db) => cursorDistance === null ? db`` : db`
+          AND
+            (ST_Distance(${originGeography}, location), url_id)
+              > (${cursorDistance}, ${cursor})
+        `,
+        (db) => db`
+          ORDER BY distance, url_id
+          LIMIT ${limit};
+        `,
+        rowToLibraryWithDistance,
+        connection,
+        ranges,
+      ).then((libraries) => ({
+        libraries: libraries,
+        cursor:
+          libraries.length > 0 ? libraries[libraries.length - 1].urlId : null,
+      }));
+    },
   );
 }

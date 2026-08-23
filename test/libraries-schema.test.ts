@@ -18,6 +18,7 @@ import {
   assertRowCount,
   InvalidQueryRequestError,
   Row,
+  WithPrimaryKey,
 } from '../src/database/types';
 import { writeUser } from '../src/database/users';
 import {
@@ -618,7 +619,7 @@ describe('readLibrariesByBoundingBox()', () => {
           expect.objectContaining({
             urlId: label,
             distance: await spheroidDistance(db, origin, points[label]),
-          }) as WithDistance<Library>,
+          }) as WithPrimaryKey<WithDistance<Library>>,
         );
       }
       expect(result!.cursor).toBe(urlId('e'));
@@ -632,7 +633,6 @@ describe('readLibrariesByBoundingBox()', () => {
         // Not in the bounding box.
         [urlId('a')]: { longitude: 0, latitude: 40 },
         [urlId('b')]: { longitude: -10, latitude: 15 },
-        // In the bounding box, but the fifth nearest.
         [urlId('c')]: { longitude: 30, latitude: 15 },
         [urlId('d')]: { longitude: 0, latitude: 0 },
         [urlId('e')]: { longitude: 30, latitude: 0 },
@@ -696,6 +696,185 @@ describe('readLibrariesByBoundingBox()', () => {
         3,
         page3!.cursor,
       );
-      expect(page4).toBeNull();
+      expect(page4).toEqual({
+        libraries: [],
+        cursor: null,
+      });
+    }));
+
+  test("try to read libraries from a cursor that doesn't exist", () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const userId = await writeUser(db, { handle: 'william' });
+      const origin = { longitude: 0, latitude: 0 };
+      const points = {
+        // Not in the bounding box.
+        [urlId('a')]: { longitude: 0, latitude: 40 },
+        [urlId('b')]: { longitude: -10, latitude: 15 },
+        [urlId('c')]: { longitude: 30, latitude: 15 },
+        [urlId('d')]: { longitude: 0, latitude: 0 },
+        [urlId('e')]: { longitude: 30, latitude: 0 },
+        [urlId('f')]: { longitude: -10, latitude: -15 },
+        [urlId('g')]: { longitude: 20, latitude: -20 },
+      };
+      const insertionOrder = [
+        urlId('a'),
+        // Point F ties with Point B for distance, so to make sure ties are
+        // broken by URL ID and not primary key, insert Point F first.
+        urlId('f'),
+        urlId('b'),
+        urlId('c'),
+        urlId('d'),
+        urlId('e'),
+        urlId('g'),
+      ];
+      for (const label of insertionOrder) {
+        await writeLibrary(db, makePoint(label, userId, points[label]));
+      }
+
+      const result = await readLibrariesByBoundingBox(
+        db,
+        { latitude: [-15, 20], longitude: [-15, 35] },
+        origin,
+        4,
+        urlId('h'),
+      );
+
+      expect(result).toBeNull();
+    }));
+
+  test('read 4 libraries nearest to the anti-origin', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const userId = await writeUser(db, { handle: 'william' });
+      const origin = { longitude: 180, latitude: 0 };
+      const points = {
+        // Not in the bounding box.
+        [urlId('a')]: { longitude: 180, latitude: 40 },
+        [urlId('b')]: { longitude: -170, latitude: 15 },
+        // In the bounding box, but the fifth nearest.
+        [urlId('c')]: { longitude: 150, latitude: 15 },
+        // The anti-origin.
+        [urlId('d')]: { longitude: 180, latitude: 0 },
+        [urlId('e')]: { longitude: 150, latitude: 0 },
+        [urlId('f')]: { longitude: -170, latitude: -15 },
+        [urlId('g')]: { longitude: 160, latitude: -20 },
+      };
+      const insertionOrder = [
+        urlId('a'),
+        // Point F ties with Point B for distance, so to make sure ties are
+        // broken by URL ID and not primary key, insert Point F first.
+        urlId('f'),
+        urlId('b'),
+        urlId('c'),
+        urlId('d'),
+        urlId('e'),
+        urlId('g'),
+      ];
+      for (const label of insertionOrder) {
+        await writeLibrary(db, makePoint(label, userId, points[label]));
+      }
+
+      const result = await readLibrariesByBoundingBox(
+        db,
+        { latitude: [-15, 20], longitude: [150, -165] },
+        origin,
+        4,
+      );
+
+      // With PostGIS' spheroid model, the north and south hemispheres are
+      // symmetric. Ties are broken by lexicographic comparison of URL IDs, and
+      // `urlId('b') < urlId('f')`.
+      const expectedLabels = [urlId('d'), urlId('b'), urlId('f'), urlId('e')];
+      expect(result).not.toBeNull();
+      expect(new Set(result!.libraries.map((p) => p.urlId))).toEqual(
+        new Set(expectedLabels),
+      );
+      for (const [i, label] of expectedLabels.entries()) {
+        expect(result!.libraries[i]).toEqual(
+          expect.objectContaining({
+            urlId: label,
+            distance: await spheroidDistance(db, origin, points[label]),
+          }) as WithPrimaryKey<WithDistance<Library>>,
+        );
+      }
+      expect(result!.cursor).toBe(urlId('e'));
+    }));
+
+  test('read libraries nearest to the anti-origin by pagination', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const userId = await writeUser(db, { handle: 'william' });
+      const origin = { longitude: 180, latitude: 0 };
+      const points = {
+        // Not in the bounding box.
+        [urlId('a')]: { longitude: 180, latitude: 40 },
+        [urlId('b')]: { longitude: -170, latitude: 15 },
+        // In the bounding box, but the fifth nearest.
+        [urlId('c')]: { longitude: 150, latitude: 15 },
+        // The anti-origin.
+        [urlId('d')]: { longitude: 180, latitude: 0 },
+        [urlId('e')]: { longitude: 150, latitude: 0 },
+        [urlId('f')]: { longitude: -170, latitude: -15 },
+        [urlId('g')]: { longitude: 160, latitude: -20 },
+      };
+      const insertionOrder = [
+        urlId('a'),
+        // Point F ties with Point B for distance, so to make sure ties are
+        // broken by URL ID and not primary key, insert Point F first.
+        urlId('f'),
+        urlId('b'),
+        urlId('c'),
+        urlId('d'),
+        urlId('e'),
+        urlId('g'),
+      ];
+      for (const label of insertionOrder) {
+        await writeLibrary(db, makePoint(label, userId, points[label]));
+      }
+
+      const page1 = await readLibrariesByBoundingBox(
+        db,
+        { latitude: [-15, 20], longitude: [150, -165] },
+        origin,
+        2,
+      );
+      expect(page1).not.toBeNull();
+      expect(new Set(page1!.libraries.map((p) => p.urlId))).toEqual(
+        new Set([urlId('d'), urlId('b')]),
+      );
+
+      const page2 = await readLibrariesByBoundingBox(
+        db,
+        { latitude: [-15, 20], longitude: [150, -165] },
+        origin,
+        2,
+        page1!.cursor,
+      );
+      expect(page2).not.toBeNull();
+      expect(new Set(page2!.libraries.map((p) => p.urlId))).toEqual(
+        new Set([urlId('f'), urlId('e')]),
+      );
+
+      const page3 = await readLibrariesByBoundingBox(
+        db,
+        { latitude: [-15, 20], longitude: [150, -165] },
+        origin,
+        1,
+        page2!.cursor,
+      );
+      expect(page3).not.toBeNull();
+      expect(new Set(page3!.libraries.map((p) => p.urlId))).toEqual(
+        new Set([urlId('c')]),
+      );
+
+      const page4 = await readLibrariesByBoundingBox(
+        db,
+        { latitude: [-15, 20], longitude: [150, -165] },
+        origin,
+        3,
+        page3!.cursor,
+      );
+      expect(page4).toEqual({
+        libraries: [],
+        cursor: null,
+      });
     }));
 });
