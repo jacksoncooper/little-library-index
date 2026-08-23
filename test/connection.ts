@@ -35,7 +35,7 @@ export async function createTestDatabase(name: string): Promise<$.ShellOutput> {
         createdb \
             --locale-provider=icu --icu-locale=und --template=template0 \
             ${name}
-        psql ${name} --file=../database/schema.sql`
+        psql ${name} --set ON_ERROR_STOP=1 --file=../database/schema.sql`
     .cwd(import.meta.dir)
     .quiet();
 }
