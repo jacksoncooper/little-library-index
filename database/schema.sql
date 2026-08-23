@@ -129,7 +129,7 @@ CREATE TABLE inventory_events (
   handle_visible boolean NOT NULL default false
 );
 
--- CREATE INDEX libraries_by_location ON libraries USING GIST (location);
+CREATE INDEX libraries_by_location ON libraries USING GIST (location::geometry);
 
 -- Because this index is built on a two-tuple, it allows us to efficiently
 -- select all inventory events for a given library, and not just for a given

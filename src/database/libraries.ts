@@ -421,11 +421,14 @@ export async function readLibrariesByBoundingBox(
           osm_element_id,
           ST_Distance(${originGeography}, location) as distance
         `,
-        (db) => cursorDistance === null ? db`` : db`
-          AND
-            (ST_Distance(${originGeography}, location), url_id)
-              > (${cursorDistance}, ${cursor})
-        `,
+        (db) =>
+          cursorDistance === null
+            ? db``
+            : db`
+              AND
+                (ST_Distance(${originGeography}, location), url_id)
+                  > (${cursorDistance}, ${cursor})
+            `,
         (db) => db`
           ORDER BY distance, url_id
           LIMIT ${limit};
