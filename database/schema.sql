@@ -45,6 +45,12 @@ CREATE TABLE libraries (
   id                   serial PRIMARY KEY,
   created_at           timestamp with time zone NOT NULL,
   created_by           integer REFERENCES users (id) NOT NULL,
+  -- For v1, we're tracking the handle and time of the last modification to
+  -- the database. In the future for v2, I'd like a full edit history of
+  -- libraries to restore vandalism.
+  version              integer NOT NULL DEFAULT 0,
+  last_edited_at       timestamp with time zone,
+  last_edited_by       integer REFERENCES users (id),
   url_id               url_id UNIQUE NOT NULL,
   location             geography(Point, 4326) NOT NULL,
   title                text,
