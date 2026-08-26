@@ -423,8 +423,7 @@ export async function readLibrariesByBoundingBox(
   return connection.begin(
     'ISOLATION LEVEL REPEATABLE READ',
     async (transaction) => {
-      let cursorDistance: number | null = null;
-
+      let cursor = null;
       if (startingFrom !== null) {
         const library = await readLibraryByUrlId(
           transaction,
@@ -433,13 +432,15 @@ export async function readLibrariesByBoundingBox(
         if (library === null) {
           return null;
         }
-        cursorDistance = await spheroidDistance(
-          transaction,
-          origin,
-          library.location,
-        );
+        cursor = {
+          urlId: library.urlId,
+          distance: await spheroidDistance(
+            transaction,
+            origin,
+            library.location,
+          ),
+        };
       }
-
       return readLibraryTuplesByBoundingBox(
         (db) => db`
         SELECT
@@ -454,12 +455,12 @@ export async function readLibrariesByBoundingBox(
           ST_Distance(${originGeography}, location) as distance
         `,
         (db) =>
-          startingFrom === null || cursorDistance === null
+          cursor === null
             ? db``
             : db`
               AND
                 (ST_Distance(${originGeography}, location), url_id)
-                  > (${cursorDistance}, ${startingFrom.urlId})
+                  > (${cursor.distance}, ${cursor.urlId})
             `,
         (db) => db`
           ORDER BY distance, url_id
