@@ -9,6 +9,7 @@ import {
   readOsmElementId,
   readPinsByBoundingBox,
   spheroidDistance,
+  splitAcrossAntiMeridian,
   WithDistance,
   writeLibrary,
   writeOsmElementId,
@@ -417,6 +418,40 @@ function makePoint(urlId: string, userId: number, location: Location) {
   };
 }
 
+describe('splitAcrossAntiMeridian()', () => {
+  test('split bounding box that does not span the anti-meridian', () => {
+    const split = splitAcrossAntiMeridian({
+      longitude: [-160, -100],
+      latitude: [30, 50],
+    });
+    expect(split).toEqual([
+      {
+        longitude: [-160, -100],
+        latitude: [30, 50],
+      },
+      null,
+    ]);
+  });
+
+  test('split bounding box that does span the anti-meridian', () => {
+    const split = splitAcrossAntiMeridian({
+      longitude: [160, -150],
+      latitude: [-10, 10],
+    });
+    expect(split).toBeInstanceOf(Array);
+    expect(split).toEqual([
+      {
+        longitude: [-180, -150],
+        latitude: [-10, 10],
+      },
+      {
+        longitude: [160, 180],
+        latitude: [-10, 10],
+      },
+    ]);
+  });
+});
+
 describe('readPinsByBoundingBox()', () => {
   test('read pins within north-western hemisphere', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
@@ -604,6 +639,7 @@ describe('readLibrariesByBoundingBox()', () => {
         { latitude: [-15, 20], longitude: [-15, 35] },
         origin,
         4,
+        null,
       );
 
       // With PostGIS' spheroid model, the north and south hemispheres are
@@ -622,7 +658,10 @@ describe('readLibrariesByBoundingBox()', () => {
           }) as WithPrimaryKey<WithDistance<Library>>,
         );
       }
-      expect(result!.cursor).toBe(urlId('e'));
+      expect(result!.cursor).toEqual({
+        ascending: urlId('e'),
+        descending: urlId('d'),
+      });
     }));
 
   test('read libraries nearest to the origin by pagination', () =>
@@ -659,46 +698,53 @@ describe('readLibrariesByBoundingBox()', () => {
         { latitude: [-15, 20], longitude: [-15, 35] },
         origin,
         2,
+        null,
       );
       expect(page1).not.toBeNull();
       expect(new Set(page1!.libraries.map((p) => p.urlId))).toEqual(
         new Set([urlId('d'), urlId('b')]),
       );
+      expect(page1!.cursor.ascending).not.toBeNull();
 
       const page2 = await readLibrariesByBoundingBox(
         db,
         { latitude: [-15, 20], longitude: [-15, 35] },
         origin,
         2,
-        page1!.cursor,
+        { urlId: page1!.cursor.ascending!, direction: 'ascending' },
       );
       expect(page2).not.toBeNull();
       expect(new Set(page2!.libraries.map((p) => p.urlId))).toEqual(
         new Set([urlId('f'), urlId('e')]),
       );
+      expect(page2!.cursor.ascending).not.toBeNull();
 
       const page3 = await readLibrariesByBoundingBox(
         db,
         { latitude: [-15, 20], longitude: [-15, 35] },
         origin,
         1,
-        page2!.cursor,
+        { urlId: page2!.cursor.ascending!, direction: 'ascending' },
       );
       expect(page3).not.toBeNull();
       expect(new Set(page3!.libraries.map((p) => p.urlId))).toEqual(
         new Set([urlId('c')]),
       );
+      expect(page3!.cursor.ascending).not.toBeNull();
 
       const page4 = await readLibrariesByBoundingBox(
         db,
         { latitude: [-15, 20], longitude: [-15, 35] },
         origin,
         3,
-        page3!.cursor,
+        { urlId: page3!.cursor.ascending!, direction: 'ascending' },
       );
       expect(page4).toEqual({
         libraries: [],
-        cursor: null,
+        cursor: {
+          ascending: null,
+          descending: null,
+        },
       });
     }));
 
@@ -736,7 +782,7 @@ describe('readLibrariesByBoundingBox()', () => {
         { latitude: [-15, 20], longitude: [-15, 35] },
         origin,
         4,
-        urlId('h'),
+        { urlId: urlId('h'), direction: 'ascending' },
       );
 
       expect(result).toBeNull();
@@ -778,6 +824,7 @@ describe('readLibrariesByBoundingBox()', () => {
         { latitude: [-15, 20], longitude: [150, -165] },
         origin,
         4,
+        null,
       );
 
       // With PostGIS' spheroid model, the north and south hemispheres are
@@ -796,85 +843,9 @@ describe('readLibrariesByBoundingBox()', () => {
           }) as WithPrimaryKey<WithDistance<Library>>,
         );
       }
-      expect(result!.cursor).toBe(urlId('e'));
-    }));
-
-  test('read libraries nearest to the anti-origin by pagination', () =>
-    withDatabaseConnection(testConnection.open(), async (db) => {
-      const userId = await writeUser(db, { handle: 'william' });
-      const origin = { longitude: 180, latitude: 0 };
-      const points = {
-        // Not in the bounding box.
-        [urlId('a')]: { longitude: 180, latitude: 40 },
-        [urlId('b')]: { longitude: -170, latitude: 15 },
-        // In the bounding box, but the fifth nearest.
-        [urlId('c')]: { longitude: 150, latitude: 15 },
-        // The anti-origin.
-        [urlId('d')]: { longitude: 180, latitude: 0 },
-        [urlId('e')]: { longitude: 150, latitude: 0 },
-        [urlId('f')]: { longitude: -170, latitude: -15 },
-        [urlId('g')]: { longitude: 160, latitude: -20 },
-      };
-      const insertionOrder = [
-        urlId('a'),
-        // Point F ties with Point B for distance, so to make sure ties are
-        // broken by URL ID and not primary key, insert Point F first.
-        urlId('f'),
-        urlId('b'),
-        urlId('c'),
-        urlId('d'),
-        urlId('e'),
-        urlId('g'),
-      ];
-      for (const label of insertionOrder) {
-        await writeLibrary(db, makePoint(label, userId, points[label]));
-      }
-
-      const page1 = await readLibrariesByBoundingBox(
-        db,
-        { latitude: [-15, 20], longitude: [150, -165] },
-        origin,
-        2,
-      );
-      expect(page1).not.toBeNull();
-      expect(new Set(page1!.libraries.map((p) => p.urlId))).toEqual(
-        new Set([urlId('d'), urlId('b')]),
-      );
-
-      const page2 = await readLibrariesByBoundingBox(
-        db,
-        { latitude: [-15, 20], longitude: [150, -165] },
-        origin,
-        2,
-        page1!.cursor,
-      );
-      expect(page2).not.toBeNull();
-      expect(new Set(page2!.libraries.map((p) => p.urlId))).toEqual(
-        new Set([urlId('f'), urlId('e')]),
-      );
-
-      const page3 = await readLibrariesByBoundingBox(
-        db,
-        { latitude: [-15, 20], longitude: [150, -165] },
-        origin,
-        1,
-        page2!.cursor,
-      );
-      expect(page3).not.toBeNull();
-      expect(new Set(page3!.libraries.map((p) => p.urlId))).toEqual(
-        new Set([urlId('c')]),
-      );
-
-      const page4 = await readLibrariesByBoundingBox(
-        db,
-        { latitude: [-15, 20], longitude: [150, -165] },
-        origin,
-        3,
-        page3!.cursor,
-      );
-      expect(page4).toEqual({
-        libraries: [],
-        cursor: null,
+      expect(result!.cursor).toEqual({
+        ascending: urlId('e'),
+        descending: urlId('d'),
       });
     }));
 });

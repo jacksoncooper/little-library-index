@@ -253,16 +253,7 @@ export type BoundingBox = {
   longitude: [start: number, end: number];
 };
 
-async function readLibraryTuplesByBoundingBox<T>(
-  // This function works on the `location` column of the `libraries` table, so
-  // `librariesTuple` must include it.
-  libraryTuples: (db: SQL) => SQL.Query<unknown>,
-  whereConjunction: (db: SQL) => SQL.Query<unknown>,
-  orderByClause: (db: SQL) => SQL.Query<unknown>,
-  transform: (row: Row) => T,
-  connection: SQL,
-  ranges: BoundingBox,
-): Promise<T[]> {
+export function validateBoundingBox(box: BoundingBox): void {
   // TODO: You'll probably want to extract this validation logic to the HTTP
   // layer eventually, because it will need to verify the operands to this
   // function too.
@@ -284,52 +275,84 @@ async function readLibraryTuplesByBoundingBox<T>(
     }
   };
 
-  const [start, end] = ranges.longitude;
+  const [start, end] = box.longitude;
   if (start <= end) {
     validateLongitudeRange([start, end]);
   } else {
     validateLongitudeRange([end, start]);
   }
 
-  const [south, north] = ranges.latitude;
+  const [south, north] = box.latitude;
   validateLatitudeRange([south, north]);
+}
+
+export function splitAcrossAntiMeridian(
+  box: BoundingBox,
+): [BoundingBox, BoundingBox | null] {
+  const [start, end] = box.longitude;
+
+  // Validate to ensure a non-empty longitude interval, which we use as a
+  // premise below.
+  validateBoundingBox(box);
 
   if (start < end) {
-    const rows = await connection<Row[]>`
-      ${libraryTuples(connection)}
-      FROM libraries
-      WHERE
-        -- This cast is interesting. Sonnet 5 discovered that PostGIS' &&
-        -- operator with geography operands is only an approximate check of the
-        -- intersection between two bounding boxes that gets worse with an
-        -- absolute increase in latitude. The && operator used by the query
-        -- planner to exclude points as an initial pass. So, && must never
-        -- produce a false negative. Luckily, a point within a bounding box
-        -- doesn't require the extra power of the geometry type.
-        (location::geometry
-          && ST_MakeEnvelope(${start}, ${south}, ${end}, ${north}, 4326))
-        ${whereConjunction(connection)}
-      ${orderByClause(connection)};
-    `;
-    return rows.map((r) => transform(r));
-  } else {
-    // The bounding box crosses the anti-meridian, and needs to be split into
-    // two calls to `ST_MakeEnvelope`.
-    const rows = await connection<Row[]>`
-      ${libraryTuples(connection)}
-      FROM libraries
-      WHERE (
-          (location::geometry
-            && ST_MakeEnvelope(-180, ${south}, ${end}, ${north}, 4326))
-          OR
-          (location::geometry
-            && ST_MakeEnvelope(${start}, ${south}, 180, ${north}, 4326))
-        )
-        ${whereConjunction(connection)}
-      ${orderByClause(connection)};
-    `;
-    return rows.map((r) => transform(r));
+    return [box, null];
   }
+
+  return [
+    {
+      longitude: [-180, end],
+      latitude: box.latitude,
+    },
+    {
+      longitude: [start, 180],
+      latitude: box.latitude,
+    },
+  ];
+}
+
+async function readLibraryTuplesByBoundingBox<T>(
+  // This function works on the `location` column of the `libraries` table, so
+  // `librariesTuple` must include it.
+  libraryTuples: (db: SQL) => SQL.Query<unknown>,
+  whereConjunction: (db: SQL) => SQL.Query<unknown>,
+  orderByClause: (db: SQL) => SQL.Query<unknown>,
+  transform: (row: Row) => T,
+  connection: SQL,
+  box: BoundingBox,
+): Promise<T[]> {
+  const [b1, b2] = splitAcrossAntiMeridian(box);
+  const envelope2 =
+    b2 === null
+      ? false
+      : connection`
+      (location::geometry
+        && ST_MakeEnvelope(
+          ${b2.longitude[0]}, ${b2.latitude[0]},
+          ${b2.longitude[1]}, ${b2.latitude[1]}, 4326))`;
+  const rows = await connection<Row[]>`
+    ${libraryTuples(connection)}
+    FROM libraries
+    WHERE
+      -- This cast is interesting. Sonnet 5 discovered that PostGIS' &&
+      -- operator with geography operands is only an approximate check of the
+      -- intersection between two bounding boxes that gets worse with an
+      -- absolute increase in latitude. The && operator used by the query
+      -- planner to exclude points as an initial pass. So, && must never
+      -- produce a false negative. Luckily, a point within a bounding box
+      -- doesn't require the extra power of the geometry type.
+      (
+        (location::geometry
+          && ST_MakeEnvelope(
+            ${b1.longitude[0]}, ${b1.latitude[0]},
+            ${b1.longitude[1]}, ${b1.latitude[1]}, 4326))
+        OR
+        ${envelope2}
+      )
+      ${whereConjunction(connection)}
+    ${orderByClause(connection)};
+  `;
+  return rows.map((r) => transform(r));
 }
 
 export function readPinsByBoundingBox(
@@ -354,7 +377,10 @@ export function readPinsByBoundingBox(
 export type LibrariesByBoundingBox = {
   libraries: WithPrimaryKey<WithDistance<Library>>[];
   // The URL ID of the last library returned by the corresponding query.
-  cursor: string | null;
+  cursor: {
+    ascending: string | null;
+    descending: string | null;
+  };
 };
 
 export async function spheroidDistance(
@@ -379,7 +405,10 @@ export async function readLibrariesByBoundingBox(
   ranges: BoundingBox,
   origin: Location,
   limit: number,
-  cursor: string | null = null,
+  startingFrom: {
+    urlId: string;
+    direction: 'ascending' | 'descending';
+  } | null,
 ): Promise<LibrariesByBoundingBox | null> {
   // This function composes 3 round trips from the web server to the PostgreSQL
   // server. This is much more legible than the many SQL fragments of d9b89.
@@ -396,8 +425,11 @@ export async function readLibrariesByBoundingBox(
     async (transaction) => {
       let cursorDistance: number | null = null;
 
-      if (cursor !== null) {
-        const library = await readLibraryByUrlId(transaction, cursor);
+      if (startingFrom !== null) {
+        const library = await readLibraryByUrlId(
+          transaction,
+          startingFrom.urlId,
+        );
         if (library === null) {
           return null;
         }
@@ -422,12 +454,12 @@ export async function readLibrariesByBoundingBox(
           ST_Distance(${originGeography}, location) as distance
         `,
         (db) =>
-          cursorDistance === null
+          startingFrom === null || cursorDistance === null
             ? db``
             : db`
               AND
                 (ST_Distance(${originGeography}, location), url_id)
-                  > (${cursorDistance}, ${cursor})
+                  > (${cursorDistance}, ${startingFrom.urlId})
             `,
         (db) => db`
           ORDER BY distance, url_id
@@ -439,7 +471,12 @@ export async function readLibrariesByBoundingBox(
       ).then((libraries) => ({
         libraries: libraries,
         cursor:
-          libraries.length > 0 ? libraries[libraries.length - 1].urlId : null,
+          libraries.length > 0
+            ? {
+                ascending: libraries[libraries.length - 1].urlId,
+                descending: libraries[0].urlId,
+              }
+            : { ascending: null, descending: null },
       }));
     },
   );
