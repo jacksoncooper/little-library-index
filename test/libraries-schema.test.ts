@@ -704,7 +704,10 @@ describe('readLibrariesByBoundingBox()', () => {
       expect(new Set(page1!.libraries.map((p) => p.urlId))).toEqual(
         new Set([urlId('d'), urlId('b')]),
       );
-      expect(page1!.cursor.ascending).not.toBeNull();
+      expect(page1!.cursor).toEqual({
+        descending: urlId('d'),
+        ascending: urlId('b'),
+      });
 
       const page2 = await readLibrariesByBoundingBox(
         db,
@@ -717,7 +720,10 @@ describe('readLibrariesByBoundingBox()', () => {
       expect(new Set(page2!.libraries.map((p) => p.urlId))).toEqual(
         new Set([urlId('f'), urlId('e')]),
       );
-      expect(page2!.cursor.ascending).not.toBeNull();
+      expect(page2!.cursor).toEqual({
+        descending: urlId('f'),
+        ascending: urlId('e'),
+      });
 
       const page3 = await readLibrariesByBoundingBox(
         db,
@@ -730,7 +736,10 @@ describe('readLibrariesByBoundingBox()', () => {
       expect(new Set(page3!.libraries.map((p) => p.urlId))).toEqual(
         new Set([urlId('c')]),
       );
-      expect(page3!.cursor.ascending).not.toBeNull();
+      expect(page3!.cursor).toEqual({
+        descending: urlId('c'),
+        ascending: urlId('c'),
+      });
 
       const page4 = await readLibrariesByBoundingBox(
         db,
@@ -846,6 +855,86 @@ describe('readLibrariesByBoundingBox()', () => {
       expect(result!.cursor).toEqual({
         ascending: urlId('e'),
         descending: urlId('d'),
+      });
+    }));
+
+  test('read libraries nearest to the origin by backward pagination', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const userId = await writeUser(db, { handle: 'william' });
+      const origin = { longitude: 0, latitude: 0 };
+      const points = {
+        // Not in the bounding box.
+        [urlId('a')]: { longitude: 0, latitude: 40 },
+        [urlId('b')]: { longitude: -10, latitude: 15 },
+        [urlId('c')]: { longitude: 30, latitude: 15 },
+        [urlId('d')]: { longitude: 0, latitude: 0 },
+        [urlId('e')]: { longitude: 30, latitude: 0 },
+        [urlId('f')]: { longitude: -10, latitude: -15 },
+        [urlId('g')]: { longitude: 20, latitude: -20 },
+      };
+      const insertionOrder = [
+        urlId('a'),
+        // Point F ties with Point B for distance, so to make sure ties are
+        // broken by URL ID and not primary key, insert Point F first.
+        urlId('f'),
+        urlId('b'),
+        urlId('c'),
+        urlId('d'),
+        urlId('e'),
+        urlId('g'),
+      ];
+      for (const label of insertionOrder) {
+        await writeLibrary(db, makePoint(label, userId, points[label]));
+      }
+
+      // The pagination in the forward direction takes pages size of 2, 2, 1,
+      // and then 3. We'll do page sizes of 3, 1, and then 3.
+
+      const page1 = await readLibrariesByBoundingBox(
+        db,
+        { latitude: [-15, 20], longitude: [-15, 35] },
+        origin,
+        3,
+        { urlId: urlId('c'), direction: 'descending' },
+      );
+      expect(page1).not.toBeNull();
+      expect(new Set(page1!.libraries.map((p) => p.urlId))).toEqual(
+        new Set([urlId('e'), urlId('f'), urlId('b')]),
+      );
+      expect(page1!.cursor).toEqual({
+        ascending: urlId('e'),
+        descending: urlId('b'),
+      });
+
+      const page2 = await readLibrariesByBoundingBox(
+        db,
+        { latitude: [-15, 20], longitude: [-15, 35] },
+        origin,
+        1,
+        { urlId: page1!.cursor.descending!, direction: 'descending' },
+      );
+      expect(page2).not.toBeNull();
+      expect(new Set(page2!.libraries.map((p) => p.urlId))).toEqual(
+        new Set([urlId('d')]),
+      );
+      expect(page2!.cursor).toEqual({
+        ascending: urlId('d'),
+        descending: urlId('d'),
+      });
+
+      const page3 = await readLibrariesByBoundingBox(
+        db,
+        { latitude: [-15, 20], longitude: [-15, 35] },
+        origin,
+        3,
+        { urlId: page2!.cursor.ascending!, direction: 'descending' },
+      );
+      expect(page3).toEqual({
+        libraries: [],
+        cursor: {
+          ascending: null,
+          descending: null,
+        },
       });
     }));
 });

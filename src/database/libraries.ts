@@ -423,6 +423,9 @@ export async function readLibrariesByBoundingBox(
   return connection.begin(
     'ISOLATION LEVEL REPEATABLE READ',
     async (transaction) => {
+      const ascending =
+        startingFrom === null || startingFrom.direction === 'ascending';
+      const orderKeyword = ascending ? connection`ASC` : connection`DESC`;
       let cursor = null;
       if (startingFrom !== null) {
         const library = await readLibraryByUrlId(
@@ -439,6 +442,7 @@ export async function readLibrariesByBoundingBox(
             origin,
             library.location,
           ),
+          operator: ascending ? connection`>` : connection`<`,
         };
       }
       return readLibraryTuplesByBoundingBox(
@@ -458,27 +462,37 @@ export async function readLibrariesByBoundingBox(
           cursor === null
             ? db``
             : db`
-              AND
+              AND (
                 (ST_Distance(${originGeography}, location), url_id)
-                  > (${cursor.distance}, ${cursor.urlId})
+                  ${cursor.operator}
+                  (${cursor.distance}, ${cursor.urlId})
+              )
             `,
         (db) => db`
-          ORDER BY distance, url_id
+          ORDER BY
+            (ST_Distance(${originGeography}, location), url_id)
+            ${orderKeyword}
           LIMIT ${limit};
         `,
         rowToLibraryWithDistance,
         connection,
         ranges,
-      ).then((libraries) => ({
-        libraries: libraries,
-        cursor:
-          libraries.length > 0
-            ? {
-                ascending: libraries[libraries.length - 1].urlId,
-                descending: libraries[0].urlId,
-              }
-            : { ascending: null, descending: null },
-      }));
+      ).then((libraries) => {
+        const ascendingLibraries = ascending
+          ? libraries
+          : libraries.toReversed();
+        return {
+          libraries: ascendingLibraries,
+          cursor:
+            ascendingLibraries.length > 0
+              ? {
+                  ascending:
+                    ascendingLibraries[ascendingLibraries.length - 1].urlId,
+                  descending: ascendingLibraries[0].urlId,
+                }
+              : { ascending: null, descending: null },
+        };
+      });
     },
   );
 }
