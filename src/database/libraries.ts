@@ -426,87 +426,71 @@ export async function readLibrariesByBoundingBox(
 ): Promise<LibrariesByBoundingBox | null> {
   // This function composes 3 round trips from the web server to the PostgreSQL
   // server. This is much more legible than the many SQL fragments of d9b89.
-  // We'll accept 3 round trips to avoid premature optimization, but they need
-  // some level of transaction isolation.
+  // We'll accept 3 round trips to avoid premature optimization. We don't need
+  // snapshot isolation here because the cursor is still valid even if the
+  // corresponding library is deleted after the library is looked up.
 
   const originGeography = locationToGeography(connection, origin);
+  const ascending =
+    startingFrom === null || startingFrom.direction === 'ascending';
+  const orderKeyword = ascending ? connection`ASC` : connection`DESC`;
 
-  // This is PostgreSQL's word for snapshot isolation. This is a read-only
-  // query, so we want to be guaranteed that the data that's read is from a
-  // "snapshot" of the database at a point in time.
-  return connection.begin(
-    'ISOLATION LEVEL REPEATABLE READ',
-    async (transaction) => {
-      const ascending =
-        startingFrom === null || startingFrom.direction === 'ascending';
-      const orderKeyword = ascending ? connection`ASC` : connection`DESC`;
-      let cursor = null;
-      if (startingFrom !== null) {
-        const library = await readLibraryByUrlId(
-          transaction,
-          startingFrom.urlId,
-        );
-        if (library === null) {
-          return null;
-        }
-        cursor = {
-          urlId: library.urlId,
-          distance: await spheroidDistance(
-            transaction,
-            origin,
-            library.location,
-          ),
-          operator: ascending ? connection`>` : connection`<`,
-        };
-      }
-      return readLibraryTuplesByBoundingBox(
-        (db) => db`
-        SELECT
-          id,
-          created_at, created_by,
-          version, last_edited_at, last_edited_by,
-          url_id,
-          ST_AsGeoJson(location) as location,
-          title,
-          description,
-          osm_element_id,
-          ST_Distance(${originGeography}, location) as distance
-        `,
-        (db) =>
-          cursor === null
-            ? db``
-            : db`
-              AND (
-                (ST_Distance(${originGeography}, location), url_id)
-                  ${cursor.operator}
-                  (${cursor.distance}, ${cursor.urlId})
-              )
-            `,
-        (db) => db`
-          ORDER BY
+  let cursor = null;
+  if (startingFrom !== null) {
+    const library = await readLibraryByUrlId(connection, startingFrom.urlId);
+    if (library === null) {
+      return null;
+    }
+    cursor = {
+      urlId: library.urlId,
+      distance: await spheroidDistance(connection, origin, library.location),
+      operator: ascending ? connection`>` : connection`<`,
+    };
+  }
+
+  const libraries = await readLibraryTuplesByBoundingBox(
+    (db) => db`
+    SELECT
+      id,
+      created_at, created_by,
+      version, last_edited_at, last_edited_by,
+      url_id,
+      ST_AsGeoJson(location) as location,
+      title,
+      description,
+      osm_element_id,
+      ST_Distance(${originGeography}, location) as distance
+    `,
+    (db) =>
+      cursor === null
+        ? db``
+        : db`
+          AND (
             (ST_Distance(${originGeography}, location), url_id)
-            ${orderKeyword}
-          LIMIT ${limit};
+              ${cursor.operator}
+              (${cursor.distance}, ${cursor.urlId})
+          )
         `,
-        rowToLibraryWithDistance,
-        connection,
-        ranges,
-      ).then((libraries) => {
-        const ascendingLibraries = ascending
-          ? libraries
-          : libraries.toReversed();
-        return {
-          libraries: ascendingLibraries,
-          cursor:
-            ascendingLibraries.length > 0
-              ? {
-                  ascending:
-                    ascendingLibraries[ascendingLibraries.length - 1].urlId,
-                  descending: ascendingLibraries[0].urlId,
-                }
-              : { ascending: null, descending: null },
-        };
-      });
-    },
+    (db) => db`
+      ORDER BY
+        (ST_Distance(${originGeography}, location), url_id)
+        ${orderKeyword}
+      LIMIT ${limit};
+    `,
+    rowToLibraryWithDistance,
+    connection,
+    ranges,
   );
+
+  const ascendingLibraries = ascending ? libraries : libraries.toReversed();
+  return {
+    libraries: ascendingLibraries,
+    cursor:
+      ascendingLibraries.length > 0
+        ? {
+            ascending: ascendingLibraries[ascendingLibraries.length - 1].urlId,
+            descending: ascendingLibraries[0].urlId,
+          }
+        : { ascending: null, descending: null },
+  };
 }
