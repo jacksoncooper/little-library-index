@@ -31,6 +31,9 @@ export type WithDistance<T> = T & { distance: number };
 export type Library = {
   createdAt: Date;
   createdBy: number;
+  version: number;
+  lastEditedAt: Date | null;
+  lastEditedBy: number | null;
   urlId: string;
   location: Location;
   title: string | null;
@@ -38,7 +41,12 @@ export type Library = {
   osmElementId: number | null;
 };
 
-export async function writeOsmElementId(
+export type NewLibrary = Omit<
+  Library,
+  'version' | 'lastEditedAt' | 'lastEditedBy'
+>;
+
+export async function createOsmElementId(
   connection: SQL,
   osmElementId: OsmElementId,
 ): Promise<number> {
@@ -94,9 +102,9 @@ export async function readOsmElementId(
   };
 }
 
-export async function writeLibrary(
+export async function createLibrary(
   connection: SQL,
-  library: Library,
+  library: NewLibrary,
 ): Promise<number> {
   const rows = await connection<Row[]>`
     INSERT INTO libraries (
@@ -170,6 +178,9 @@ function rowToLibrary(row: Row): WithPrimaryKey<Library> {
   assertColumn(row, 'id', 'number');
   assertColumn(row, 'created_at', Date);
   assertColumn(row, 'created_by', 'number');
+  assertColumn(row, 'version', 'number');
+  assertColumn(row, 'last_edited_at', Date, true);
+  assertColumn(row, 'last_edited_by', 'number', true);
   assertColumn(row, 'url_id', 'string');
   assertColumn(row, 'location', 'string');
   assertColumn(row, 'title', 'string', true);
@@ -180,6 +191,9 @@ function rowToLibrary(row: Row): WithPrimaryKey<Library> {
     id: row.id,
     createdAt: row.created_at,
     createdBy: row.created_by,
+    version: row.version,
+    lastEditedAt: row.last_edited_at,
+    lastEditedBy: row.last_edited_by,
     urlId: row.url_id,
     location: geoJsonToLocation(row.location),
     title: row.title,
@@ -208,8 +222,8 @@ export async function readLibraryByUrlId(
   const rows = await connection<Row[]>`
     SELECT
       id,
-      created_at,
-      created_by,
+      created_at, created_by,
+      version, last_edited_at, last_edited_by,
       url_id,
       ST_AsGeoJson(location) as location,
       title,
@@ -449,8 +463,8 @@ export async function readLibrariesByBoundingBox(
         (db) => db`
         SELECT
           id,
-          created_at,
-          created_by,
+          created_at, created_by,
+          version, last_edited_at, last_edited_by,
           url_id,
           ST_AsGeoJson(location) as location,
           title,

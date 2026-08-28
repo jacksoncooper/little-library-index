@@ -43,12 +43,15 @@ CREATE TABLE osm_element_ids (
 
 CREATE TABLE libraries (
   id                   serial PRIMARY KEY,
+  -- The time the web server receives the request to create the library. I can
+  -- display something nifty and hip with this value, like "est. April 2026".
+  -- This isn't the time at which the library was physically constructed.
   created_at           timestamp with time zone NOT NULL,
   created_by           integer REFERENCES users (id) NOT NULL,
   -- For v1, we're tracking the handle and time of the last modification to
   -- the database. In the future for v2, I'd like a full edit history of
   -- libraries to restore vandalism.
-  version              integer NOT NULL DEFAULT 0,
+  version              integer NOT NULL DEFAULT 1,
   last_edited_at       timestamp with time zone,
   last_edited_by       integer REFERENCES users (id),
   url_id               url_id UNIQUE NOT NULL,

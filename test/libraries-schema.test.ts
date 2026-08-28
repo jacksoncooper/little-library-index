@@ -2,8 +2,11 @@ import { SQL } from 'bun';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import {
+  createLibrary,
+  createOsmElementId,
   Library,
   Location,
+  NewLibrary,
   readLibrariesByBoundingBox,
   readLibraryByUrlId,
   readOsmElementId,
@@ -11,8 +14,6 @@ import {
   spheroidDistance,
   splitAcrossAntiMeridian,
   WithDistance,
-  writeLibrary,
-  writeOsmElementId,
 } from '../src/database/libraries';
 import {
   assertColumn,
@@ -54,7 +55,7 @@ node
 out;
 */
 
-function writeOsmElementIds(connection: SQL): Promise<Row[]> {
+function createOsmElementIds(connection: SQL): Promise<Row[]> {
   // The `WITH` statement is used to logically guarantee an insertion ordering
   // of the tuples that follow the `VALUES` keyword.
   return connection<Row[]>`
@@ -80,7 +81,7 @@ function readOsmElementIds(connection: SQL): Promise<Row[]> {
 describe('readOsmElementId()', () => {
   test('retrieve OSM element ID by primary key', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const rows = await writeOsmElementIds(db);
+      const rows = await createOsmElementIds(db);
       const row1 = rows[0];
       assertColumn(row1, 'id', 'number');
 
@@ -101,14 +102,14 @@ describe('readOsmElementId()', () => {
     }));
 });
 
-describe('writeOsmElementId()', () => {
+describe('createOsmElementId()', () => {
   test('insert a new OSM element ID', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const nodeId1 = await writeOsmElementId(db, {
+      const nodeId1 = await createOsmElementId(db, {
         elementType: 'node',
         elementId: 10783380181n,
       });
-      const nodeId2 = await writeOsmElementId(db, {
+      const nodeId2 = await createOsmElementId(db, {
         elementType: 'node',
         elementId: 10794116980n,
       });
@@ -136,12 +137,12 @@ describe('writeOsmElementId()', () => {
 
   test('try to insert the same OSM element ID', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      await writeOsmElementId(db, {
+      await createOsmElementId(db, {
         elementType: 'node',
         elementId: 10783380181n,
       });
       await rejectsWithPostgresError(
-        writeOsmElementId(db, {
+        createOsmElementId(db, {
           elementType: 'node',
           elementId: 10783380181n,
         }),
@@ -163,14 +164,15 @@ function writeLibraries(connection: SQL): Promise<Row[]> {
         )
         INSERT INTO libraries (
             created_at, created_by,
+            version, last_edited_at, last_edited_by,
             url_id,
             location,
             title, description,
             osm_element_id
         )
         SELECT
-            '2023-04-04 01:00:07 UTC',
-            new_user.id,
+            '2023-04-04 01:00:07 UTC', new_user.id,
+            2, '2023-04-04 13:09:26 UTC', new_user.id,
             -- This is not a real URL ID.
             'ao6wm2',
             ST_Point(-122.4781917, 37.7774749, 4326)::geography,
@@ -186,8 +188,8 @@ function readLibraries(connection: SQL): Promise<Row[]> {
   return connection<Row[]>`
     SELECT
       id,
-      created_at,
-      created_by,
+      created_at, created_by,
+      version, last_edited_at, last_edited_by,
       url_id,
       ST_AsGeoJson(location) as location,
       title,
@@ -217,6 +219,11 @@ describe('readLibraryByUrlId()', () => {
         new Date(Date.UTC(2023, 3, 4, 1, 0, 7)),
       );
       expect(library!.createdBy).toEqual(row.created_by);
+      expect(library!.version).toEqual(2);
+      expect(library!.lastEditedAt).toEqual(
+        new Date(Date.UTC(2023, 3, 4, 13, 9, 26)),
+      );
+      expect(library!.lastEditedBy).toEqual(row.created_by);
       expect(library!.urlId).toEqual('ao6wm2');
       expect(library!.location).toEqual({
         latitude: 37.7774749,
@@ -235,7 +242,7 @@ describe('readLibraryByUrlId()', () => {
     }));
 });
 
-describe('writeLibrary()', () => {
+describe('createLibrary()', () => {
   test('insert a new library', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
       // These are implementation functions! Writing this test in terms of them
@@ -244,7 +251,7 @@ describe('writeLibrary()', () => {
       // our test will fail the foreign key constraint on insert. This is an
       // acceptable dependency for reducing test code duplication.
       const userId = await writeUser(db, { handle: 'mapadu' });
-      const osmElementId = await writeOsmElementId(db, {
+      const osmElementId = await createOsmElementId(db, {
         elementType: 'node',
         elementId: 10783380181n,
       });
@@ -253,6 +260,9 @@ describe('writeLibrary()', () => {
         createdAt: new Date(Date.UTC(2023, 3, 4, 1, 0, 7)),
         createdBy: userId,
         urlId: 'ao6wm2',
+        version: 1,
+        lastEditedAt: null,
+        lastEditedBy: null,
         location: {
           latitude: 37.7774749,
           longitude: -122.4781917,
@@ -261,7 +271,7 @@ describe('writeLibrary()', () => {
         description: null,
         osmElementId: osmElementId,
       };
-      const libraryId = await writeLibrary(db, expectedLibrary);
+      const libraryId = await createLibrary(db, expectedLibrary);
 
       const libraryRowsInDb = await readLibraries(db);
       assertRowCount(libraryRowsInDb, 1);
@@ -269,6 +279,9 @@ describe('writeLibrary()', () => {
       assertColumn(libraryInDb, 'id', 'number');
       assertColumn(libraryInDb, 'created_at', Date);
       assertColumn(libraryInDb, 'created_by', 'number');
+      assertColumn(libraryInDb, 'version', 'number');
+      assertColumn(libraryInDb, 'last_edited_at', Date, true);
+      assertColumn(libraryInDb, 'last_edited_by', 'number', true);
       assertColumn(libraryInDb, 'url_id', 'string');
       assertColumn(libraryInDb, 'location', 'string');
       assertColumn(libraryInDb, 'title', 'string', true);
@@ -289,6 +302,9 @@ describe('writeLibrary()', () => {
       expect(expectedLibrary).toEqual({
         createdAt: libraryInDb.created_at,
         createdBy: libraryInDb.created_by,
+        version: libraryInDb.version,
+        lastEditedAt: libraryInDb.last_edited_at,
+        lastEditedBy: libraryInDb.last_edited_by,
         urlId: libraryInDb.url_id,
         location: locationInDb,
         title: libraryInDb.title,
@@ -300,11 +316,11 @@ describe('writeLibrary()', () => {
   test('try to insert a library with the same URL ID', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
       const userId = await writeUser(db, { handle: 'mapadu' });
-      const osmElementId = await writeOsmElementId(db, {
+      const osmElementId = await createOsmElementId(db, {
         elementType: 'node',
         elementId: 10783380181n,
       });
-      const library = {
+      const library: NewLibrary = {
         createdAt: new Date(Date.UTC(2023, 3, 4, 1, 0, 7)),
         createdBy: userId,
         urlId: 'ao6wm2',
@@ -316,9 +332,9 @@ describe('writeLibrary()', () => {
         description: null,
         osmElementId: osmElementId,
       };
-      await writeLibrary(db, library);
+      await createLibrary(db, library);
       await rejectsWithPostgresError(
-        writeLibrary(db, library),
+        createLibrary(db, library),
         postgresError.unique_violation,
       );
     }));
@@ -326,11 +342,11 @@ describe('writeLibrary()', () => {
   test('try to insert a library with a URL ID with an invalid character', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
       const userId = await writeUser(db, { handle: 'mapadu' });
-      const osmElementId = await writeOsmElementId(db, {
+      const osmElementId = await createOsmElementId(db, {
         elementType: 'node',
         elementId: 10783380181n,
       });
-      const library = {
+      const library: NewLibrary = {
         createdAt: new Date(Date.UTC(2023, 3, 4, 1, 0, 7)),
         createdBy: userId,
         urlId: 'ao!wm2',
@@ -343,7 +359,7 @@ describe('writeLibrary()', () => {
         osmElementId: osmElementId,
       };
       await rejectsWithPostgresError(
-        writeLibrary(db, library),
+        createLibrary(db, library),
         postgresError.check_violation,
       );
     }));
@@ -351,11 +367,11 @@ describe('writeLibrary()', () => {
   test('try to insert a library with a URL ID with a capital character', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
       const userId = await writeUser(db, { handle: 'mapadu' });
-      const osmElementId = await writeOsmElementId(db, {
+      const osmElementId = await createOsmElementId(db, {
         elementType: 'node',
         elementId: 10783380181n,
       });
-      const library = {
+      const library: NewLibrary = {
         createdAt: new Date(Date.UTC(2023, 3, 4, 1, 0, 7)),
         createdBy: userId,
         urlId: 'ao6wM2',
@@ -368,7 +384,7 @@ describe('writeLibrary()', () => {
         osmElementId: osmElementId,
       };
       await rejectsWithPostgresError(
-        writeLibrary(db, library),
+        createLibrary(db, library),
         postgresError.check_violation,
       );
     }));
@@ -376,11 +392,11 @@ describe('writeLibrary()', () => {
   test('try to insert a library with a URL ID with an invalid length', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
       const userId = await writeUser(db, { handle: 'mapadu' });
-      const osmElementId = await writeOsmElementId(db, {
+      const osmElementId = await createOsmElementId(db, {
         elementType: 'node',
         elementId: 10783380181n,
       });
-      const library = {
+      const library: NewLibrary = {
         createdAt: new Date(Date.UTC(2023, 3, 4, 1, 0, 7)),
         createdBy: userId,
         urlId: 'ao6wm27',
@@ -393,7 +409,7 @@ describe('writeLibrary()', () => {
         osmElementId: osmElementId,
       };
       await rejectsWithPostgresError(
-        writeLibrary(db, library),
+        createLibrary(db, library),
         postgresError.string_data_right_truncation,
       );
     }));
@@ -465,7 +481,7 @@ describe('readPinsByBoundingBox()', () => {
         { label: urlId('f'), longitude: -120, latitude: 25 },
       ];
       for (const p of points) {
-        await writeLibrary(
+        await createLibrary(
           db,
           makePoint(p.label, userId, {
             latitude: p.latitude,
@@ -495,7 +511,7 @@ describe('readPinsByBoundingBox()', () => {
         { label: urlId('f'), longitude: -120, latitude: 25 },
       ];
       for (const p of points) {
-        await writeLibrary(
+        await createLibrary(
           db,
           makePoint(p.label, userId, {
             latitude: p.latitude,
@@ -520,7 +536,7 @@ describe('readPinsByBoundingBox()', () => {
         { label: urlId('d'), longitude: -115, latitude: 80 }, // South boundary!
       ];
       for (const p of points) {
-        await writeLibrary(
+        await createLibrary(
           db,
           makePoint(p.label, userId, {
             latitude: p.latitude,
@@ -548,7 +564,7 @@ describe('readPinsByBoundingBox()', () => {
         { label: urlId('f'), longitude: 180, latitude: -10 },
       ];
       for (const p of points) {
-        await writeLibrary(
+        await createLibrary(
           db,
           makePoint(p.label, userId, {
             latitude: p.latitude,
@@ -631,7 +647,7 @@ describe('readLibrariesByBoundingBox()', () => {
         urlId('g'),
       ];
       for (const label of insertionOrder) {
-        await writeLibrary(db, makePoint(label, userId, points[label]));
+        await createLibrary(db, makePoint(label, userId, points[label]));
       }
 
       const result = await readLibrariesByBoundingBox(
@@ -690,7 +706,7 @@ describe('readLibrariesByBoundingBox()', () => {
         urlId('g'),
       ];
       for (const label of insertionOrder) {
-        await writeLibrary(db, makePoint(label, userId, points[label]));
+        await createLibrary(db, makePoint(label, userId, points[label]));
       }
 
       const page1 = await readLibrariesByBoundingBox(
@@ -783,7 +799,7 @@ describe('readLibrariesByBoundingBox()', () => {
         urlId('g'),
       ];
       for (const label of insertionOrder) {
-        await writeLibrary(db, makePoint(label, userId, points[label]));
+        await createLibrary(db, makePoint(label, userId, points[label]));
       }
 
       const result = await readLibrariesByBoundingBox(
@@ -825,7 +841,7 @@ describe('readLibrariesByBoundingBox()', () => {
         urlId('g'),
       ];
       for (const label of insertionOrder) {
-        await writeLibrary(db, makePoint(label, userId, points[label]));
+        await createLibrary(db, makePoint(label, userId, points[label]));
       }
 
       const result = await readLibrariesByBoundingBox(
@@ -884,7 +900,7 @@ describe('readLibrariesByBoundingBox()', () => {
         urlId('g'),
       ];
       for (const label of insertionOrder) {
-        await writeLibrary(db, makePoint(label, userId, points[label]));
+        await createLibrary(db, makePoint(label, userId, points[label]));
       }
 
       // The pagination in the forward direction takes pages size of 2, 2, 1,
