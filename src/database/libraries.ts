@@ -41,6 +41,9 @@ export type Library = {
   osmElementId: number | null;
 };
 
+type EditableLibraryProperties =
+  'location' | 'title' | 'description' | 'osmElementId';
+
 export type NewLibrary = Omit<
   Library,
   'version' | 'lastEditedAt' | 'lastEditedBy'
@@ -66,9 +69,9 @@ export async function readOsmElementId(
   id: number,
 ): Promise<WithPrimaryKey<OsmElementId> | null> {
   const rows = await connection<Row[]>`
-        SELECT id, element_type, element_id FROM osm_element_ids
-        WHERE id = ${id};
-    `;
+      SELECT id, element_type, element_id FROM osm_element_ids
+      WHERE id = ${id};
+  `;
 
   if (rows.length < 1) {
     return null;
@@ -493,4 +496,44 @@ export async function readLibrariesByBoundingBox(
           }
         : { ascending: null, descending: null },
   };
+}
+
+export async function editLibrary(
+  connection: SQL,
+  library: Pick<Library, EditableLibraryProperties | 'urlId' | 'version'>,
+  lastEdited: { by: number; at: Date },
+): Promise<WithPrimaryKey<Library> | null> {
+  const rows = await connection<Row[]>`
+    UPDATE libraries
+    SET
+      version = ${library.version + 1},
+      last_edited_at = ${lastEdited.at},
+      last_edited_by = ${lastEdited.by},
+      location = ${locationToGeography(connection, library.location)},
+      title = ${library.title},
+      description = ${library.description},
+      osm_element_id = ${library.osmElementId}
+    WHERE
+      url_id = ${library.urlId} AND
+      version = ${library.version}
+    RETURNING
+      id,
+      created_at, created_by,
+      version, last_edited_at, last_edited_by,
+      url_id,
+      ST_AsGeoJson(location) as location,
+      title,
+      description,
+      osm_element_id
+  `;
+
+  // This early return may look redundant, but it's not. If the update succeeds,
+  // it's possible that a subsequent update could commit before we have the
+  // opportunity to read the updated value.
+  if (rows.length === 1) {
+    const row = rows[0];
+    return rowToLibrary(row);
+  }
+
+  return await readLibraryByUrlId(connection, library.urlId);
 }

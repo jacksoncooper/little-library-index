@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   createLibrary,
   createOsmElementId,
+  editLibrary,
   Library,
   Location,
   NewLibrary,
@@ -180,7 +181,7 @@ function writeLibraries(connection: SQL): Promise<Row[]> {
             null,
             new_osm_element_id.id
         FROM new_user CROSS JOIN new_osm_element_id
-        RETURNING id, created_by, osm_element_id;
+        RETURNING id, created_by, url_id, osm_element_id;
     `;
 }
 
@@ -208,9 +209,10 @@ describe('readLibraryByUrlId()', () => {
       const row = rows[0];
       assertColumn(row, 'id', 'number');
       assertColumn(row, 'created_by', 'number');
+      assertColumn(row, 'url_id', 'string');
       assertColumn(row, 'osm_element_id', 'number');
 
-      const library = await readLibraryByUrlId(db, 'ao6wm2');
+      const library = await readLibraryByUrlId(db, row.url_id);
 
       expect(library).not.toBe(null);
 
@@ -224,7 +226,7 @@ describe('readLibraryByUrlId()', () => {
         new Date(Date.UTC(2023, 3, 4, 13, 9, 26)),
       );
       expect(library!.lastEditedBy).toEqual(row.created_by);
-      expect(library!.urlId).toEqual('ao6wm2');
+      expect(library!.urlId).toEqual(row.url_id);
       expect(library!.location).toEqual({
         latitude: 37.7774749,
         longitude: -122.4781917,
@@ -952,5 +954,102 @@ describe('readLibrariesByBoundingBox()', () => {
           descending: null,
         },
       });
+    }));
+});
+
+describe('editLibrary()', () => {
+  test('edit a current library', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const rows = await writeLibraries(db);
+      assertRowCount(rows, 1);
+      const row = rows[0];
+      assertColumn(row, 'url_id', 'string');
+
+      const jacksonId = await writeUser(db, { handle: 'jackson' });
+      const library = await readLibraryByUrlId(db, row.url_id);
+      expect(library).not.toBeNull();
+
+      const editedLibrary = {
+        ...library!,
+        location: {
+          latitude: 38.7774749, // Bump the library north a bit.
+          longitude: -122.4781917,
+        },
+        title: 'Only Agatha Christie books',
+        description: 'If you put something else in here I will find you 🔪',
+        version: library!.version,
+        lastEditedAt: new Date(Date.UTC(2026, 7, 27, 9, 57, 0)),
+        lastEditedBy: jacksonId,
+      };
+
+      const result = await editLibrary(db, editedLibrary, {
+        by: jacksonId,
+        at: new Date(Date.UTC(2026, 7, 27, 9, 57, 0)),
+      });
+
+      expect(result).not.toBeNull();
+      expect(result).toEqual({
+        ...editedLibrary,
+        version: library!.version + 1,
+      });
+    }));
+
+  test("edit a library that isn't current", () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const rows = await writeLibraries(db);
+      assertRowCount(rows, 1);
+      const row = rows[0];
+      assertColumn(row, 'url_id', 'string');
+
+      const jacksonId = await writeUser(db, { handle: 'jackson' });
+      const library = await readLibraryByUrlId(db, row.url_id);
+      expect(library).not.toBeNull();
+
+      // Oops! Someone beat Jackson to the update.
+      await db`
+        UPDATE libraries
+        SET version = ${library!.version + 1} WHERE url_id = ${library!.urlId}
+      `;
+
+      const editedLibrary = {
+        ...library!,
+        location: {
+          latitude: 38.7774749, // Bump the library north a bit.
+          longitude: -122.4781917,
+        },
+        title: 'Only Agatha Christie books',
+      };
+
+      const result = await editLibrary(db, editedLibrary, {
+        by: jacksonId,
+        at: new Date(Date.UTC(2026, 7, 27, 9, 57, 0)),
+      });
+
+      // The API should return the current version of the library.
+      expect(result).toEqual({ ...library!, version: library!.version + 1 });
+    }));
+
+  test("edit a library that doesn't exist", () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const jacksonId = await writeUser(db, { handle: 'jackson' });
+
+      const editedLibrary = {
+        urlId: 'ao6wm2',
+        version: 1,
+        location: {
+          latitude: 38.7774749, // Bump the library north a bit.
+          longitude: -122.4781917,
+        },
+        title: 'Only Agatha Christie books',
+        description: null,
+        osmElementId: null,
+      };
+
+      const result = await editLibrary(db, editedLibrary, {
+        by: jacksonId,
+        at: new Date(Date.UTC(2026, 7, 27, 9, 57, 0)),
+      });
+
+      expect(result).toBeNull();
     }));
 });
