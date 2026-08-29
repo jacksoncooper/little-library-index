@@ -168,12 +168,8 @@ CREATE TABLE isbns (
   isbn_13       isbn_13 UNIQUE NOT NULL CHECK (is_valid_isbn_13(isbn_13)),
   -- In what version was the ISBN written on the back cover of the book? All
   -- 10-digit ISBNs can be converted to 13-digit ISBNs.
-  source_format isbn_version NOT NULL
-);
-
-CREATE TABLE isbn_to_book (
-  isbn_id integer PRIMARY KEY REFERENCES isbns (id),
-  book_id integer REFERENCES books (id) NOT NULL
+  source_format isbn_version NOT NULL,
+  book_id       integer REFERENCES books (id) NOT NULL
 );
 
 -- Transactions! --
