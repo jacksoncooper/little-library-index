@@ -42,47 +42,43 @@ CREATE TABLE osm_element_ids (
 );
 
 CREATE TABLE libraries (
-  id                   serial PRIMARY KEY,
+  id             serial PRIMARY KEY,
   -- The time the web server receives the request to create the library. I can
   -- display something nifty and hip with this value, like "est. April 2026".
   -- This isn't the time at which the library was physically constructed.
-  created_at           timestamp with time zone NOT NULL,
-  created_by           integer REFERENCES users (id) NOT NULL,
+  created_at     timestamp with time zone NOT NULL,
+  created_by     integer REFERENCES users (id) NOT NULL,
   -- For v1, we're tracking the handle and time of the last modification to
   -- the database. In the future for v2, I'd like a full edit history of
   -- libraries to restore vandalism.
-  version              integer NOT NULL DEFAULT 1,
-  last_edited_at       timestamp with time zone,
-  last_edited_by       integer REFERENCES users (id),
-  url_id               url_id UNIQUE NOT NULL,
-  location             geography(Point, 4326) NOT NULL,
-  title                text,
-  description          text,
-  osm_element_id       integer REFERENCES osm_element_ids (id)
+  version        integer NOT NULL DEFAULT 1,
+  last_edited_at timestamp with time zone,
+  last_edited_by integer REFERENCES users (id),
+  url_id         url_id UNIQUE NOT NULL,
+  location       geography(Point, 4326) NOT NULL,
+  title          text,
+  description    text,
+  osm_element_id integer REFERENCES osm_element_ids (id)
 );
 
 -- Books! --
 
-CREATE TABLE open_library_ids (
-  id         serial PRIMARY KEY,
-  work_id    text NOT NULL,
-  edition_id text UNIQUE NOT NULL,
-  author_id  text
-);
-
 CREATE TABLE books (
-  id              serial PRIMARY KEY,
-  url_id          url_id UNIQUE NOT NULL,
-  created_at      timestamp with time zone NOT NULL,
-  created_by      integer REFERENCES users (id) NOT NULL,
+  id                      serial PRIMARY KEY,
+  url_id                  url_id UNIQUE NOT NULL,
+  created_at              timestamp with time zone NOT NULL,
+  created_by              integer REFERENCES users (id) NOT NULL,
   -- For v1, we're tracking the handle and time of the last modification to
   -- the database. In the future for v2, I'd like a full edit history of books
   -- to restore vandalism.
-  version              integer NOT NULL DEFAULT 1,
-  last_edited_at       timestamp with time zone,
-  last_edited_by       integer REFERENCES users (id),
-  title           text NOT NULL,
-  author          text,
+  version                 integer NOT NULL DEFAULT 1,
+  last_edited_at          timestamp with time zone,
+  last_edited_by          integer REFERENCES users (id),
+  open_library_work_id    text,
+  open_library_edition_id text UNIQUE,
+  open_library_author_id  text,
+  title                   text NOT NULL,
+  author                  text,
   -- Open Library languages are from MARC.
   --
   --   https://openlibrary.org/languages.json
@@ -95,11 +91,18 @@ CREATE TABLE books (
   --
   --  https://www.loc.gov/standards/iso639-2/php/code_list.php
   --
-  iso_639_2       text,
-  publisher       text,
-  publish_date    text,
-  description     text,
-  open_library_id integer REFERENCES open_library_ids (id)
+  iso_639_2               text,
+  publisher               text,
+  publish_date            text,
+  description             text,
+CONSTRAINT open_library_ids_have_edition
+  CHECK (
+      -- "If there is a work ID, then there is an edition ID."
+      NOT ( open_library_work_id IS NOT NULL AND open_library_edition_id IS NULL)
+    AND
+      -- "If there is an author ID, then there is an edition ID."
+      NOT ( open_library_author_id IS NOT NULL AND open_library_edition_id IS NULL)
+  )
 );
 
 CREATE TYPE isbn_version
@@ -107,7 +110,6 @@ CREATE TYPE isbn_version
     'isbn_10',
     'isbn_13'
 );
-
 
 CREATE DOMAIN isbn_13
   AS text
