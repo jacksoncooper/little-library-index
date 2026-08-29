@@ -2,7 +2,7 @@ import { SQL } from 'bun';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { assertColumn, assertRowCount, Row } from '../src/database/types';
-import { readUser, writeUser } from '../src/database/users';
+import { createUser, readUserByHandle } from '../src/database/users';
 import {
   createTestDatabase,
   deleteTestDatabase,
@@ -24,7 +24,7 @@ afterEach(async () =>
   deleteTestDatabase(testConnection.name),
 );
 
-function writeUsers(connection: SQL): Promise<void> {
+function createUsers(connection: SQL): Promise<void> {
   // Similar to Promises constructed with `$`, the query will not execute
   // until the promise is awaited.
   return connection<void>`
@@ -33,38 +33,38 @@ function writeUsers(connection: SQL): Promise<void> {
     `;
 }
 
-function readUsers(connection: SQL): Promise<Row[]> {
+function readUserByHandles(connection: SQL): Promise<Row[]> {
   return connection<Row[]>`
         SELECT * from users
         ORDER BY users.id;
     `;
 }
 
-describe('readUser()', () => {
+describe('readUserByHandle()', () => {
   test('retrieve user by handle', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      await writeUsers(db);
-      const user = await readUser(db, 'lovelace');
+      await createUsers(db);
+      const user = await readUserByHandle(db, 'lovelace');
       expect(user).not.toBeNull();
       expect(user!.handle).toBe('lovelace');
     }));
 
   test('try to retrieve nonexistent user', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      await writeUsers(db);
-      const user = await readUser(db, 'skiena');
+      await createUsers(db);
+      const user = await readUserByHandle(db, 'skiena');
       expect(user).toBeNull();
     }));
 });
 
-describe('writeUser()', () => {
+describe('createUser()', () => {
   test('insert a new user', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const turingId = await writeUser(db, { handle: 'turing' });
-      const lovelaceId = await writeUser(db, { handle: 'lovelace' });
+      const turingId = await createUser(db, { handle: 'turing' });
+      const lovelaceId = await createUser(db, { handle: 'lovelace' });
       expect(turingId).not.toBe(lovelaceId);
 
-      const users = await readUsers(db);
+      const users = await readUserByHandles(db);
       assertRowCount(users, 2);
 
       const turing = users[0];
@@ -82,9 +82,9 @@ describe('writeUser()', () => {
 
   test('try to insert an existing user', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      await writeUser(db, { handle: 'turing' });
+      await createUser(db, { handle: 'turing' });
       await rejectsWithPostgresError(
-        writeUser(db, { handle: 'turing' }),
+        createUser(db, { handle: 'turing' }),
         postgresError.unique_violation,
       );
     }));

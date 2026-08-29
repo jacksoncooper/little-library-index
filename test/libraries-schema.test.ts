@@ -23,7 +23,7 @@ import {
   Row,
   WithPrimaryKey,
 } from '../src/database/types';
-import { writeUser } from '../src/database/users';
+import { createUser } from '../src/database/users';
 import {
   createTestDatabase,
   deleteTestDatabase,
@@ -248,11 +248,11 @@ describe('createLibrary()', () => {
   test('insert a new library', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
       // These are implementation functions! Writing this test in terms of them
-      // means that, for example, if `writeUser` misbehaves by returning a
+      // means that, for example, if `createUser` misbehaves by returning a
       // primary key that doesn't correspond to an entry in the users table,
       // our test will fail the foreign key constraint on insert. This is an
       // acceptable dependency for reducing test code duplication.
-      const userId = await writeUser(db, { handle: 'mapadu' });
+      const userId = await createUser(db, { handle: 'mapadu' });
       const osmElementId = await createOsmElementId(db, {
         elementType: 'node',
         elementId: 10783380181n,
@@ -317,7 +317,7 @@ describe('createLibrary()', () => {
 
   test('try to insert a library with the same URL ID', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const userId = await writeUser(db, { handle: 'mapadu' });
+      const userId = await createUser(db, { handle: 'mapadu' });
       const osmElementId = await createOsmElementId(db, {
         elementType: 'node',
         elementId: 10783380181n,
@@ -343,7 +343,7 @@ describe('createLibrary()', () => {
 
   test('try to insert a library with a URL ID with an invalid character', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const userId = await writeUser(db, { handle: 'mapadu' });
+      const userId = await createUser(db, { handle: 'mapadu' });
       const osmElementId = await createOsmElementId(db, {
         elementType: 'node',
         elementId: 10783380181n,
@@ -368,7 +368,7 @@ describe('createLibrary()', () => {
 
   test('try to insert a library with a URL ID with a capital character', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const userId = await writeUser(db, { handle: 'mapadu' });
+      const userId = await createUser(db, { handle: 'mapadu' });
       const osmElementId = await createOsmElementId(db, {
         elementType: 'node',
         elementId: 10783380181n,
@@ -393,7 +393,7 @@ describe('createLibrary()', () => {
 
   test('try to insert a library with a URL ID with an invalid length', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const userId = await writeUser(db, { handle: 'mapadu' });
+      const userId = await createUser(db, { handle: 'mapadu' });
       const osmElementId = await createOsmElementId(db, {
         elementType: 'node',
         elementId: 10783380181n,
@@ -473,7 +473,7 @@ describe('splitAcrossAntiMeridian()', () => {
 describe('readPinsByBoundingBox()', () => {
   test('read pins within north-western hemisphere', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const userId = await writeUser(db, { handle: 'william' });
+      const userId = await createUser(db, { handle: 'william' });
       const points = [
         { label: urlId('a'), longitude: -165, latitude: 50 },
         { label: urlId('b'), longitude: -135, latitude: 50 }, // North boundary!
@@ -503,7 +503,7 @@ describe('readPinsByBoundingBox()', () => {
 
   test('read no pins within north-western hemisphere', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const userId = await writeUser(db, { handle: 'william' });
+      const userId = await createUser(db, { handle: 'william' });
       const points = [
         { label: urlId('a'), longitude: -165, latitude: 50 },
         { label: urlId('b'), longitude: -135, latitude: 50 },
@@ -530,7 +530,7 @@ describe('readPinsByBoundingBox()', () => {
 
   test('read pins within north-western hemisphere near north pole 🐧', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const userId = await writeUser(db, { handle: 'william' });
+      const userId = await createUser(db, { handle: 'william' });
       const points = [
         { label: urlId('a'), longitude: -120, latitude: 90 }, // Northwest corner!
         { label: urlId('b'), longitude: -150, latitude: 85 }, // Way out west!
@@ -556,7 +556,7 @@ describe('readPinsByBoundingBox()', () => {
 
   test('read pins crossing the anti-meridian 🐟', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const userId = await writeUser(db, { handle: 'william' });
+      const userId = await createUser(db, { handle: 'william' });
       const points = [
         { label: urlId('a'), longitude: 160, latitude: 10 }, // Northeast corner.
         { label: urlId('b'), longitude: -160, latitude: 5 },
@@ -624,7 +624,7 @@ describe('readPinsByBoundingBox()', () => {
 describe('readLibrariesByBoundingBox()', () => {
   test('read 4 libraries nearest to the origin', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const userId = await writeUser(db, { handle: 'william' });
+      const userId = await createUser(db, { handle: 'william' });
       const origin = { longitude: 0, latitude: 0 };
       const points = {
         // Not in the bounding box.
@@ -684,7 +684,7 @@ describe('readLibrariesByBoundingBox()', () => {
 
   test('read libraries nearest to the origin by pagination', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const userId = await writeUser(db, { handle: 'william' });
+      const userId = await createUser(db, { handle: 'william' });
       const origin = { longitude: 0, latitude: 0 };
       const points = {
         // Not in the bounding box.
@@ -777,7 +777,7 @@ describe('readLibrariesByBoundingBox()', () => {
 
   test("try to read libraries from a cursor that doesn't exist", () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const userId = await writeUser(db, { handle: 'william' });
+      const userId = await createUser(db, { handle: 'william' });
       const origin = { longitude: 0, latitude: 0 };
       const points = {
         // Not in the bounding box.
@@ -817,7 +817,7 @@ describe('readLibrariesByBoundingBox()', () => {
 
   test('read 4 libraries nearest to the anti-origin', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const userId = await writeUser(db, { handle: 'william' });
+      const userId = await createUser(db, { handle: 'william' });
       const origin = { longitude: 180, latitude: 0 };
       const points = {
         // Not in the bounding box.
@@ -878,7 +878,7 @@ describe('readLibrariesByBoundingBox()', () => {
 
   test('read libraries nearest to the origin by backward pagination', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const userId = await writeUser(db, { handle: 'william' });
+      const userId = await createUser(db, { handle: 'william' });
       const origin = { longitude: 0, latitude: 0 };
       const points = {
         // Not in the bounding box.
@@ -965,7 +965,7 @@ describe('editLibrary()', () => {
       const row = rows[0];
       assertColumn(row, 'url_id', 'string');
 
-      const jacksonId = await writeUser(db, { handle: 'jackson' });
+      const jacksonId = await createUser(db, { handle: 'jackson' });
       const library = await readLibraryByUrlId(db, row.url_id);
       expect(library).not.toBeNull();
 
@@ -1001,7 +1001,7 @@ describe('editLibrary()', () => {
       const row = rows[0];
       assertColumn(row, 'url_id', 'string');
 
-      const jacksonId = await writeUser(db, { handle: 'jackson' });
+      const jacksonId = await createUser(db, { handle: 'jackson' });
       const library = await readLibraryByUrlId(db, row.url_id);
       expect(library).not.toBeNull();
 
@@ -1031,7 +1031,7 @@ describe('editLibrary()', () => {
 
   test("edit a library that doesn't exist", () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const jacksonId = await writeUser(db, { handle: 'jackson' });
+      const jacksonId = await createUser(db, { handle: 'jackson' });
 
       const editedLibrary = {
         urlId: 'ao6wm2',

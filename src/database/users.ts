@@ -6,7 +6,7 @@ export type User = {
   handle: string;
 };
 
-export async function writeUser(connection: SQL, user: User): Promise<number> {
+export async function createUser(connection: SQL, user: User): Promise<number> {
   const rows = await connection<Row[]>`
         INSERT INTO users (handle)
         VALUES (${user.handle})
@@ -22,7 +22,7 @@ export async function writeUser(connection: SQL, user: User): Promise<number> {
 //
 //   https://littlelibraryindex.com/user/jackson
 //
-export async function readUser(
+export async function readUserByHandle(
   connection: SQL,
   handle: string,
 ): Promise<WithPrimaryKey<User> | null> {
