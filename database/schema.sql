@@ -75,6 +75,12 @@ CREATE TABLE books (
   url_id          url_id UNIQUE NOT NULL,
   created_at      timestamp with time zone NOT NULL,
   created_by      integer REFERENCES users (id) NOT NULL,
+  -- For v1, we're tracking the handle and time of the last modification to
+  -- the database. In the future for v2, I'd like a full edit history of books
+  -- to restore vandalism.
+  version              integer NOT NULL DEFAULT 1,
+  last_edited_at       timestamp with time zone,
+  last_edited_by       integer REFERENCES users (id),
   title           text NOT NULL,
   author          text,
   -- Open Library languages are from MARC.
@@ -82,8 +88,8 @@ CREATE TABLE books (
   --   https://openlibrary.org/languages.json
   --   https://www.loc.gov/marc/languages/language_code.html
   --
-  -- We want ISO 639.2 with the goal of moving to ISO 639.3. ISO 639.2 gives more
-  -- than one code for 21 languages for bibliographic ("B") and terminology
+  -- We want ISO 639.2 with the goal of moving to ISO 639.3. ISO 639.2 gives
+  -- more than one code for 21 languages for bibliographic ("B") and terminology
   -- ("T") purposes. Fortunately for us, all MARC language codes are "B" ISO
   -- 639.2 codes.
   --
@@ -102,12 +108,67 @@ CREATE TYPE isbn_version
     'isbn_13'
 );
 
+
+CREATE DOMAIN isbn_13
+  AS text
+  -- We don't use `AND is_valid_isbn_13` here, because SQL doesn't guarantee
+  -- short-circuit evaluation of Boolean operators. This becomes a column
+  -- constraint instead.
+  --
+  --   https://www.postgresql.org/docs/current/sql-expressions.html#SYNTAX-EXPRESS-EVAL
+  --
+  CHECK (VALUE ~ '^[0-9]{13}$');
+
+CREATE FUNCTION is_valid_isbn_13(isbn isbn_13) RETURNS boolean
+  LANGUAGE sql
+  IMMUTABLE
+  BEGIN ATOMIC
+  -- Sonnet 5 wrote the body of this function because I don't know SQL, so
+  -- let's break it down.
+  --
+  -- Given this beautiful book ISBN 978-1-63973-448-1, the `isbn` parameter is
+  -- the string '9781639734481'.
+  --
+  -- # SELECT unnest(ARRAY ['9', '7', '8', ..., '1']) as digit;
+  --    digit
+  --   -------
+  --    9
+  --    7
+  --    8
+  --    ...
+  --    1
+  -- (13 rows)
+  --
+  -- `WITH ORDINALITY` adds a `bigint` index column to the rows of the function
+  -- it's applied to.
+  --
+  -- # SELECT * FROM unnest(ARRAY ['9', '7', '8', ..., '1']) WITH ORDINALITY _(digit, i);
+  --  digit | i
+  -- -------+----
+  --  9     |  1
+  --  7     |  2
+  --  8     |  3
+  --  ...
+  --  1     | 13
+  -- (13 rows)
+  --
+  -- The algorithm itself for verifying the checksum digit is some interesting
+  -- modular arithmetic, equivalent to the ISBN-13 standard text.
+  --
+  -- TODO: A fun exercise for me later is to prove it.
+  --
+  --   https://en.wikipedia.org/wiki/ISBN#ISBN-13_check_digit_calculation
+  --
+    SELECT SUM(digit::int * CASE WHEN i % 2 = 1 THEN 1 ELSE 3 END) % 10 = 0
+    FROM unnest(string_to_array(isbn, NULL)) WITH ORDINALITY _(digit, i);
+  END;
+
 CREATE TABLE isbns (
-  id      serial PRIMARY KEY,
-  -- TODO: Should this be an unconstrained string? I need to understand how the
-  -- ISBN format works.
-  isbn    text UNIQUE NOT NULL,
-  version isbn_version NOT NULL
+  id            serial PRIMARY KEY,
+  isbn_13       isbn_13 UNIQUE NOT NULL CHECK (is_valid_isbn_13(isbn_13)),
+  -- In what version was the ISBN written on the back cover of the book? All
+  -- 10-digit ISBNs can be converted to 13-digit ISBNs.
+  source_format isbn_version NOT NULL
 );
 
 CREATE TABLE isbn_to_book (
