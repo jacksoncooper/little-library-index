@@ -30,35 +30,36 @@ CREATE DOMAIN url_id
   AS char(6)
   CHECK (VALUE ~ '^[a-z0-9]+$');
 
-CREATE TABLE osm_element_ids (
-  id           serial PRIMARY KEY,
-  element_type osm_element_type NOT NULL,
-  element_id   bigint NOT NULL,
+CREATE TABLE libraries (
+  id                           serial PRIMARY KEY,
+  -- The time the web server receives the request to create the library. I can
+  -- display something nifty and hip with this value, like "est. April 2026".
+  -- This isn't the time at which the library was physically constructed.
+  created_at                   timestamp with time zone NOT NULL,
+  created_by                   integer REFERENCES users (id) NOT NULL,
+  -- For v1, we're tracking the handle and time of the last modification to
+  -- the database. In the future for v2, I'd like a full edit history of
+  -- libraries to restore vandalism.
+  version                      integer NOT NULL DEFAULT 1,
+  last_edited_at               timestamp with time zone,
+  last_edited_by               integer REFERENCES users (id),
+  url_id                       url_id UNIQUE NOT NULL,
+  location                     geography(Point, 4326) NOT NULL,
+  title                        text,
+  description                  text,
+  open_street_map_element_type osm_element_type,
+  open_street_map_element_id   bigint,
   -- From https://wiki.openstreetmap.org/wiki/Elements#Ids,
   --   "Element types have their own ID space, so there could be a node with
   --   id=100 and a way with id=100, which are unlikely to be related or
   --   geographically near to each other."
-  UNIQUE (element_type, element_id)
-);
-
-CREATE TABLE libraries (
-  id             serial PRIMARY KEY,
-  -- The time the web server receives the request to create the library. I can
-  -- display something nifty and hip with this value, like "est. April 2026".
-  -- This isn't the time at which the library was physically constructed.
-  created_at     timestamp with time zone NOT NULL,
-  created_by     integer REFERENCES users (id) NOT NULL,
-  -- For v1, we're tracking the handle and time of the last modification to
-  -- the database. In the future for v2, I'd like a full edit history of
-  -- libraries to restore vandalism.
-  version        integer NOT NULL DEFAULT 1,
-  last_edited_at timestamp with time zone,
-  last_edited_by integer REFERENCES users (id),
-  url_id         url_id UNIQUE NOT NULL,
-  location       geography(Point, 4326) NOT NULL,
-  title          text,
-  description    text,
-  osm_element_id integer REFERENCES osm_element_ids (id)
+UNIQUE NULLS DISTINCT (
+  open_street_map_element_type, open_street_map_element_id
+),
+CONSTRAINT open_street_map_ids_have_element_id
+  CHECK(
+    (open_street_map_element_type IS NULL) = (open_street_map_element_id IS NULL)
+  )
 );
 
 -- Books! --
@@ -98,10 +99,10 @@ CREATE TABLE books (
 CONSTRAINT open_library_ids_have_edition
   CHECK (
       -- "If there is a work ID, then there is an edition ID."
-      NOT ( open_library_work_id IS NOT NULL AND open_library_edition_id IS NULL)
+      NOT (open_library_work_id IS NOT NULL AND open_library_edition_id IS NULL)
     AND
       -- "If there is an author ID, then there is an edition ID."
-      NOT ( open_library_author_id IS NOT NULL AND open_library_edition_id IS NULL)
+      NOT (open_library_author_id IS NOT NULL AND open_library_edition_id IS NULL)
   )
 );
 

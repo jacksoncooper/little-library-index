@@ -9,11 +9,11 @@ import {
   WithPrimaryKey,
 } from './types';
 
-type OsmElementType = 'node' | 'relation' | 'way';
+export type OsmElementType = 'node' | 'relation' | 'way';
 
 type OsmElementId = {
-  elementType: OsmElementType;
-  elementId: bigint;
+  elementType: OsmElementType | null;
+  elementId: bigint | null;
 };
 
 export type Location = {
@@ -38,7 +38,7 @@ export type Library = {
   location: Location;
   title: string | null;
   description: string | null;
-  osmElementId: number | null;
+  osmElementId: OsmElementId;
 };
 
 type EditableLibraryProperties =
@@ -48,62 +48,6 @@ export type NewLibrary = Omit<
   Library,
   'version' | 'lastEditedAt' | 'lastEditedBy'
 >;
-
-export async function createOsmElementId(
-  connection: SQL,
-  osmElementId: OsmElementId,
-): Promise<number> {
-  const rows = await connection<Row[]>`
-        INSERT INTO osm_element_ids (element_type, element_id)
-        VALUES (${osmElementId.elementType}, ${osmElementId.elementId})
-        RETURNING id;
-    `;
-  assertRowCount(rows, 1);
-  const row = rows[0];
-  assertColumn(row, 'id', 'number');
-  return row.id;
-}
-
-export async function readOsmElementId(
-  connection: SQL,
-  id: number,
-): Promise<WithPrimaryKey<OsmElementId> | null> {
-  const rows = await connection<Row[]>`
-      SELECT id, element_type, element_id FROM osm_element_ids
-      WHERE id = ${id};
-  `;
-
-  if (rows.length < 1) {
-    return null;
-  }
-  assertRowCount(rows, 1);
-
-  const row = rows[0];
-  assertColumn(row, 'id', 'number');
-  assertColumn(row, 'element_type', 'string');
-  assertColumn(row, 'element_id', 'string');
-
-  if (!(
-    row.element_type == 'node' ||
-    row.element_type == 'relation' ||
-    row.element_type == 'way'
-  )) {
-    throw new QueryShapeError(
-      `expect '${row.element_type}' to be one of ` +
-        `'node', 'relation', 'way'`,
-    );
-  }
-
-  return {
-    id: row.id,
-    // TODO: The BigInt constructor will throw a `SyntaxError` if it can't
-    // parse its argument. MDN says "Strings are parsed as if they are
-    // source text for integer literals," which explains the bizarre error
-    // class.
-    elementId: BigInt(row.element_id),
-    elementType: row.element_type,
-  };
-}
 
 export async function createLibrary(
   connection: SQL,
@@ -117,7 +61,8 @@ export async function createLibrary(
       location,
       title,
       description,
-      osm_element_id
+      open_street_map_element_type,
+      open_street_map_element_id
     )
     VALUES(
       ${library.createdAt},
@@ -126,7 +71,8 @@ export async function createLibrary(
       ${locationToGeography(connection, library.location)},
       ${library.title},
       ${library.description},
-      ${library.osmElementId}
+      ${library.osmElementId.elementType},
+      ${library.osmElementId.elementId}
     )
     RETURNING id;
   `;
@@ -177,6 +123,36 @@ function rowToPin(row: Row): WithPrimaryKey<Pin> {
   };
 }
 
+function rowToOsmElementId(row: Row): OsmElementId {
+  assertColumn(row, 'open_street_map_element_type', 'string', true);
+  assertColumn(row, 'open_street_map_element_id', 'string', true);
+
+  const elementType = row.open_street_map_element_type;
+  const elementId = row.open_street_map_element_id;
+
+  if (
+    elementType !== null &&
+    !(
+      elementType == 'node' ||
+      elementType == 'relation' ||
+      elementType == 'way'
+    )
+  ) {
+    throw new QueryShapeError(
+      `expect '${elementType}' to be one of ` + `'node', 'relation', 'way'`,
+    );
+  }
+
+  return {
+    // TODO: The BigInt constructor will throw a `SyntaxError` if it can't
+    // parse its argument. MDN says "Strings are parsed as if they are
+    // source text for integer literals," which explains the bizarre error
+    // class.
+    elementType: elementType,
+    elementId: elementId === null ? null : BigInt(elementId),
+  };
+}
+
 function rowToLibrary(row: Row): WithPrimaryKey<Library> {
   assertColumn(row, 'id', 'number');
   assertColumn(row, 'created_at', Date);
@@ -188,7 +164,6 @@ function rowToLibrary(row: Row): WithPrimaryKey<Library> {
   assertColumn(row, 'location', 'string');
   assertColumn(row, 'title', 'string', true);
   assertColumn(row, 'description', 'string', true);
-  assertColumn(row, 'osm_element_id', 'number', true);
 
   return {
     id: row.id,
@@ -201,7 +176,7 @@ function rowToLibrary(row: Row): WithPrimaryKey<Library> {
     location: geoJsonToLocation(row.location),
     title: row.title,
     description: row.description,
-    osmElementId: row.osm_element_id,
+    osmElementId: rowToOsmElementId(row),
   };
 }
 
@@ -231,7 +206,8 @@ export async function readLibraryByUrlId(
       ST_AsGeoJson(location) as location,
       title,
       description,
-      osm_element_id
+      open_street_map_element_type,
+      open_street_map_element_id
     FROM libraries
     WHERE url_id = ${urlId}
   `;
@@ -461,7 +437,8 @@ export async function readLibrariesByBoundingBox(
       ST_AsGeoJson(location) as location,
       title,
       description,
-      osm_element_id,
+      open_street_map_element_type,
+      open_street_map_element_id,
       ST_Distance(${originGeography}, location) as distance
     `,
     (db) =>
@@ -512,7 +489,8 @@ export async function editLibrary(
       location = ${locationToGeography(connection, library.location)},
       title = ${library.title},
       description = ${library.description},
-      osm_element_id = ${library.osmElementId}
+      open_street_map_element_type = ${library.osmElementId.elementType},
+      open_street_map_element_id = ${library.osmElementId.elementId}
     WHERE
       url_id = ${library.urlId} AND
       version = ${library.version}
@@ -524,7 +502,8 @@ export async function editLibrary(
       ST_AsGeoJson(location) as location,
       title,
       description,
-      osm_element_id
+      open_street_map_element_type,
+      open_street_map_element_id
   `;
 
   // This early return may look redundant, but it's not. If the update succeeds,

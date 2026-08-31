@@ -19,7 +19,7 @@ At the moment, I'm a systems programmer, professionally. I'm interested in learn
 - I want to render HTML server-side, rather than client-side from server state. I like the idea of a lightweight client.
 - I'm not using an ORM, because it's not justified by the scale of the project and because I want to interface with the database myself.
 - Both client code and server will be written entirely in TypeScript, because type safety is wonderful.
-- This project will never be vibe coded, but I use Anthropic's Sonnet 5 for design and testing.
+- This project will never be vibe coded, but I use Anthropic's Sonnet 5 as a design partner. And sometimes I let it [write obscure SQL functions for me](https://github.com/jacksoncooper/little-library-index/commit/cf4164b8624de438d9eef8663dd23aee7f8bab82). I want to understand everything I write in this project, even if it's not the efficient way to go about it. And, [it feels more meaningful](https://journal.stuffwithstuff.com/2026/01/24/the-value-of-things) this way. This is something I care about existing in the world and for it to be built with care.
 - To the extent possible, I want the read-only endpoints to work without JavaScript. This means a URL-parameter first design. Any JavaScript can manipulate the DOM according to those endpoints without a page refresh.
 
 ## Project notes

@@ -3,14 +3,13 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import {
   createLibrary,
-  createOsmElementId,
   editLibrary,
   Library,
   Location,
   NewLibrary,
+  OsmElementType,
   readLibrariesByBoundingBox,
   readLibraryByUrlId,
-  readOsmElementId,
   readPinsByBoundingBox,
   spheroidDistance,
   splitAcrossAntiMeridian,
@@ -56,111 +55,11 @@ node
 out;
 */
 
-function createOsmElementIds(connection: SQL): Promise<Row[]> {
-  // The `WITH` statement is used to logically guarantee an insertion ordering
-  // of the tuples that follow the `VALUES` keyword.
-  return connection<Row[]>`
-        WITH inserted AS(
-            INSERT INTO osm_element_ids (element_type, element_id)
-            VALUES
-                ('node', 10783380181),
-                ('node', 10794116980),
-                ('node', 6625158282)
-            RETURNING id
-        )
-        SELECT id FROM inserted ORDER BY id;
-    `;
-}
-
-function readOsmElementIds(connection: SQL): Promise<Row[]> {
-  return connection<Row[]>`
-        SELECT * from osm_element_ids
-        ORDER BY osm_element_ids.id;
-    `;
-}
-
-describe('readOsmElementId()', () => {
-  test('retrieve OSM element ID by primary key', () =>
-    withDatabaseConnection(testConnection.open(), async (db) => {
-      const rows = await createOsmElementIds(db);
-      const row1 = rows[0];
-      assertColumn(row1, 'id', 'number');
-
-      const elementId1 = await readOsmElementId(db, row1.id);
-      expect(elementId1).not.toBeNull();
-
-      expect(elementId1!.id).toBe(row1.id);
-      expect(elementId1!.elementId).toBe(10783380181n);
-      expect(elementId1!.elementType).toBe('node');
-    }));
-
-  test('try to retrieve nonexistent OSM element ID', () =>
-    withDatabaseConnection(testConnection.open(), async (db) => {
-      // No OSM element IDs exist in the database, so any nonexistent
-      // primary key will do.
-      const elementId2 = await readOsmElementId(db, 1);
-      expect(elementId2).toBeNull();
-    }));
-});
-
-describe('createOsmElementId()', () => {
-  test('insert a new OSM element ID', () =>
-    withDatabaseConnection(testConnection.open(), async (db) => {
-      const nodeId1 = await createOsmElementId(db, {
-        elementType: 'node',
-        elementId: 10783380181n,
-      });
-      const nodeId2 = await createOsmElementId(db, {
-        elementType: 'node',
-        elementId: 10794116980n,
-      });
-      expect(nodeId1).not.toBe(nodeId2);
-
-      const nodes = await readOsmElementIds(db);
-      assertRowCount(nodes, 2);
-
-      const node1 = nodes[0];
-      assertColumn(node1, 'element_type', 'string');
-      // Bun's SQL module gives back PostgreSQL's `bigint` datatype as a
-      // string, which is disappointing. Claude suspects this is because
-      // `JSON.stringify` will throw a `TypeError` if it encounters a
-      // `bigint`.
-      assertColumn(node1, 'element_id', 'string');
-      expect(node1.element_type).toBe('node');
-      expect(node1.element_id).toBe('10783380181');
-
-      const node2 = nodes[1];
-      assertColumn(node2, 'element_type', 'string');
-      assertColumn(node2, 'element_id', 'string');
-      expect(node2.element_type).toBe('node');
-      expect(node2.element_id).toBe('10794116980');
-    }));
-
-  test('try to insert the same OSM element ID', () =>
-    withDatabaseConnection(testConnection.open(), async (db) => {
-      await createOsmElementId(db, {
-        elementType: 'node',
-        elementId: 10783380181n,
-      });
-      await rejectsWithPostgresError(
-        createOsmElementId(db, {
-          elementType: 'node',
-          elementId: 10783380181n,
-        }),
-        postgresError.unique_violation,
-      );
-    }));
-});
-
 function writeLibraries(connection: SQL): Promise<Row[]> {
   return connection<Row[]>`
         WITH new_user AS (
             INSERT INTO users (handle)
             VALUES ('mapadu')
-            RETURNING id
-        ), new_osm_element_id AS (
-            INSERT INTO osm_element_ids (element_type, element_id)
-            VALUES ('node', 10783380181)
             RETURNING id
         )
         INSERT INTO libraries (
@@ -169,7 +68,8 @@ function writeLibraries(connection: SQL): Promise<Row[]> {
             url_id,
             location,
             title, description,
-            osm_element_id
+            open_street_map_element_type,
+            open_street_map_element_id
         )
         SELECT
             '2023-04-04 01:00:07 UTC', new_user.id,
@@ -179,9 +79,10 @@ function writeLibraries(connection: SQL): Promise<Row[]> {
             ST_Point(-122.4781917, 37.7774749, 4326)::geography,
             null,
             null,
-            new_osm_element_id.id
-        FROM new_user CROSS JOIN new_osm_element_id
-        RETURNING id, created_by, url_id, osm_element_id;
+            'node',
+            10783380181
+        FROM new_user
+        RETURNING id, created_by, url_id;
     `;
 }
 
@@ -195,7 +96,8 @@ function readLibraries(connection: SQL): Promise<Row[]> {
       ST_AsGeoJson(location) as location,
       title,
       description,
-      osm_element_id
+      open_street_map_element_type,
+      open_street_map_element_id
     FROM libraries
     ORDER BY libraries.id;
   `;
@@ -210,7 +112,6 @@ describe('readLibraryByUrlId()', () => {
       assertColumn(row, 'id', 'number');
       assertColumn(row, 'created_by', 'number');
       assertColumn(row, 'url_id', 'string');
-      assertColumn(row, 'osm_element_id', 'number');
 
       const library = await readLibraryByUrlId(db, row.url_id);
 
@@ -233,7 +134,8 @@ describe('readLibraryByUrlId()', () => {
       });
       expect(library!.title).toBeNull();
       expect(library!.description).toBeNull();
-      expect(library!.osmElementId).toEqual(row.osm_element_id);
+      expect(library!.osmElementId.elementType).toEqual('node');
+      expect(library!.osmElementId.elementId).toEqual(10783380181n);
     }));
 
   test('try to retrieve a nonexistent library', () =>
@@ -253,10 +155,6 @@ describe('createLibrary()', () => {
       // our test will fail the foreign key constraint on insert. This is an
       // acceptable dependency for reducing test code duplication.
       const userId = await createUser(db, { handle: 'mapadu' });
-      const osmElementId = await createOsmElementId(db, {
-        elementType: 'node',
-        elementId: 10783380181n,
-      });
 
       const expectedLibrary: Library = {
         createdAt: new Date(Date.UTC(2023, 3, 4, 1, 0, 7)),
@@ -271,7 +169,10 @@ describe('createLibrary()', () => {
         },
         title: null,
         description: null,
-        osmElementId: osmElementId,
+        osmElementId: {
+          elementType: 'node',
+          elementId: 10783380181n,
+        },
       };
       const libraryId = await createLibrary(db, expectedLibrary);
 
@@ -288,7 +189,13 @@ describe('createLibrary()', () => {
       assertColumn(libraryInDb, 'location', 'string');
       assertColumn(libraryInDb, 'title', 'string', true);
       assertColumn(libraryInDb, 'description', 'string', true);
-      assertColumn(libraryInDb, 'osm_element_id', 'number');
+      assertColumn(libraryInDb, 'open_street_map_element_type', 'string', true);
+      // Bun's SQL module gives back PostgreSQL's `bigint` datatype as a string,
+      // which is disappointing. Sonnet 5 suspects this is because
+      // `JSON.stringify` will throw a `TypeError` if it encounters a `bigint`,
+      // and it's a natural operation for, say, and HTTP server to want to
+      // easily serialize database results for reply to a request.
+      assertColumn(libraryInDb, 'open_street_map_element_id', 'string');
 
       const point = JSON.parse(libraryInDb.location) as Row;
       assertColumn(point, 'coordinates', Array);
@@ -311,17 +218,17 @@ describe('createLibrary()', () => {
         location: locationInDb,
         title: libraryInDb.title,
         description: libraryInDb.description,
-        osmElementId: libraryInDb.osm_element_id,
+        osmElementId: {
+          elementType:
+            libraryInDb.open_street_map_element_type as OsmElementType,
+          elementId: BigInt(libraryInDb.open_street_map_element_id),
+        },
       });
     }));
 
   test('try to insert a library with the same URL ID', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
       const userId = await createUser(db, { handle: 'mapadu' });
-      const osmElementId = await createOsmElementId(db, {
-        elementType: 'node',
-        elementId: 10783380181n,
-      });
       const library: NewLibrary = {
         createdAt: new Date(Date.UTC(2023, 3, 4, 1, 0, 7)),
         createdBy: userId,
@@ -332,7 +239,10 @@ describe('createLibrary()', () => {
         },
         title: null,
         description: null,
-        osmElementId: osmElementId,
+        osmElementId: {
+          elementType: 'node',
+          elementId: 10783380181n,
+        },
       };
       await createLibrary(db, library);
       await rejectsWithPostgresError(
@@ -344,10 +254,6 @@ describe('createLibrary()', () => {
   test('try to insert a library with a URL ID with an invalid character', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
       const userId = await createUser(db, { handle: 'mapadu' });
-      const osmElementId = await createOsmElementId(db, {
-        elementType: 'node',
-        elementId: 10783380181n,
-      });
       const library: NewLibrary = {
         createdAt: new Date(Date.UTC(2023, 3, 4, 1, 0, 7)),
         createdBy: userId,
@@ -358,7 +264,10 @@ describe('createLibrary()', () => {
         },
         title: null,
         description: null,
-        osmElementId: osmElementId,
+        osmElementId: {
+          elementType: 'node',
+          elementId: 10783380181n,
+        },
       };
       await rejectsWithPostgresError(
         createLibrary(db, library),
@@ -369,10 +278,6 @@ describe('createLibrary()', () => {
   test('try to insert a library with a URL ID with a capital character', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
       const userId = await createUser(db, { handle: 'mapadu' });
-      const osmElementId = await createOsmElementId(db, {
-        elementType: 'node',
-        elementId: 10783380181n,
-      });
       const library: NewLibrary = {
         createdAt: new Date(Date.UTC(2023, 3, 4, 1, 0, 7)),
         createdBy: userId,
@@ -383,7 +288,10 @@ describe('createLibrary()', () => {
         },
         title: null,
         description: null,
-        osmElementId: osmElementId,
+        osmElementId: {
+          elementType: 'node',
+          elementId: 10783380181n,
+        },
       };
       await rejectsWithPostgresError(
         createLibrary(db, library),
@@ -394,10 +302,6 @@ describe('createLibrary()', () => {
   test('try to insert a library with a URL ID with an invalid length', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
       const userId = await createUser(db, { handle: 'mapadu' });
-      const osmElementId = await createOsmElementId(db, {
-        elementType: 'node',
-        elementId: 10783380181n,
-      });
       const library: NewLibrary = {
         createdAt: new Date(Date.UTC(2023, 3, 4, 1, 0, 7)),
         createdBy: userId,
@@ -408,11 +312,72 @@ describe('createLibrary()', () => {
         },
         title: null,
         description: null,
-        osmElementId: osmElementId,
+        osmElementId: {
+          elementType: 'node',
+          elementId: 10783380181n,
+        },
       };
       await rejectsWithPostgresError(
         createLibrary(db, library),
         postgresError.string_data_right_truncation,
+      );
+    }));
+
+  test('try to insert a library with a duplicate OpenStreetMap ID', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const userId = await createUser(db, { handle: 'penelope' });
+      const library: NewLibrary = {
+        createdAt: new Date(Date.UTC(2026, 7, 30, 17, 26, 0)),
+        createdBy: userId,
+        urlId: 'p00l3s',
+        location: { latitude: 0, longitude: 0 },
+        title: "Santa's lair",
+        description: null,
+        osmElementId: {
+          elementType: 'node',
+          // Fun fact: Santa's lending library was the first ever in OSM.
+          elementId: 1n,
+        },
+      };
+      const libraryWithDuplicateOsmId: NewLibrary = {
+        createdAt: new Date(Date.UTC(2026, 7, 30, 17, 26, 0)),
+        createdBy: userId,
+        urlId: 'p00l3d', // This is different!
+        location: { latitude: 0, longitude: 0 },
+        title: "Santa's lair",
+        description: null,
+        osmElementId: {
+          elementType: 'node',
+          // Fun fact: Santa's lending library was the first ever in OSM.
+          elementId: 1n,
+        },
+      };
+      await createLibrary(db, library);
+      await rejectsWithPostgresError(
+        createLibrary(db, libraryWithDuplicateOsmId),
+        postgresError.unique_violation,
+      );
+    }));
+
+  test('try to insert a library with an incomplete OpenStreetMap ID', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const userId = await createUser(db, { handle: 'penelope' });
+      const library: NewLibrary = {
+        createdAt: new Date(Date.UTC(2026, 7, 30, 17, 26, 0)),
+        createdBy: userId,
+        urlId: 'p00l3s',
+        location: { latitude: 0, longitude: 0 },
+        title: "Santa's lair",
+        description: null,
+        osmElementId: {
+          elementType: null,
+          // This could be a way or a relation! Uh oh!
+          elementId: 1n,
+        },
+      };
+      await rejectsWithPostgresError(
+        createLibrary(db, library),
+        postgresError.check_violation,
       );
     }));
 });
@@ -432,7 +397,10 @@ function makePoint(urlId: string, userId: number, location: Location) {
     location,
     title: null,
     description: null,
-    osmElementId: null,
+    osmElementId: {
+      elementType: null,
+      elementId: null,
+    },
   };
 }
 
@@ -1042,7 +1010,10 @@ describe('editLibrary()', () => {
         },
         title: 'Only Agatha Christie books',
         description: null,
-        osmElementId: null,
+        osmElementId: {
+          elementType: null,
+          elementId: null,
+        },
       };
 
       const result = await editLibrary(db, editedLibrary, {
