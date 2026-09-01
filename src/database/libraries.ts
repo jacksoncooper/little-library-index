@@ -1,5 +1,6 @@
 import { SQL } from 'bun';
 
+import { UserAttribution } from './common';
 import {
   assertColumn,
   assertRowCount,
@@ -11,6 +12,11 @@ import {
 
 export type OsmElementType = 'node' | 'relation' | 'way';
 
+// TODO: This type is wider than the values it can actually inhabit in the
+// database. If `elementId` exists, `elementType` can't be null. The property
+// of the `Library` type should be nullable. This type shouldn't be used to
+// represent that case, even if it's closer to how the database represents the
+// relation.
 type OsmElementId = {
   elementType: OsmElementType | null;
   elementId: bigint | null;
@@ -32,6 +38,9 @@ export type Library = {
   createdAt: Date;
   createdBy: number;
   version: number;
+  // TODO: There's no constraint in the type system or schema that says that
+  // `lastEditedAt` and `lastEditedBy` are either both `null` or both
+  // non-`null`.
   lastEditedAt: Date | null;
   lastEditedBy: number | null;
   urlId: string;
@@ -478,7 +487,7 @@ export async function readLibrariesByBoundingBox(
 export async function editLibrary(
   connection: SQL,
   library: Pick<Library, EditableLibraryProperties | 'urlId' | 'version'>,
-  lastEdited: { by: number; at: Date },
+  lastEdited: UserAttribution,
 ): Promise<WithPrimaryKey<Library> | null> {
   const rows = await connection<Row[]>`
     UPDATE libraries

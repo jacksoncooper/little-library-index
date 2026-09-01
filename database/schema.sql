@@ -35,12 +35,14 @@ CREATE TABLE libraries (
   -- The time the web server receives the request to create the library. I can
   -- display something nifty and hip with this value, like "est. April 2026".
   -- This isn't the time at which the library was physically constructed.
+  -- TODO: No schema-level constraint that these are set together!
   created_at                   timestamp with time zone NOT NULL,
   created_by                   integer REFERENCES users (id) NOT NULL,
   -- For v1, we're tracking the handle and time of the last modification to
   -- the database. In the future for v2, I'd like a full edit history of
   -- libraries to restore vandalism.
   version                      integer NOT NULL DEFAULT 1,
+  -- TODO: No schema-level constraint that these are set together!
   last_edited_at               timestamp with time zone,
   last_edited_by               integer REFERENCES users (id),
   url_id                       url_id UNIQUE NOT NULL,
@@ -66,15 +68,17 @@ CONSTRAINT open_street_map_ids_have_element_id
 
 CREATE TABLE books (
   id                      serial PRIMARY KEY,
-  url_id                  url_id UNIQUE NOT NULL,
+  -- TODO: No schema-level constraint that these are set together!
   created_at              timestamp with time zone NOT NULL,
   created_by              integer REFERENCES users (id) NOT NULL,
   -- For v1, we're tracking the handle and time of the last modification to
   -- the database. In the future for v2, I'd like a full edit history of books
   -- to restore vandalism.
   version                 integer NOT NULL DEFAULT 1,
+  -- TODO: No schema-level constraint that these are set together!
   last_edited_at          timestamp with time zone,
   last_edited_by          integer REFERENCES users (id),
+  url_id                  url_id UNIQUE NOT NULL,
   open_library_work_id    text,
   open_library_edition_id text UNIQUE,
   open_library_author_id  text,

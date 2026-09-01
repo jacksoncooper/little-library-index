@@ -29,6 +29,7 @@ At the moment, I'm a systems programmer, professionally. I'm interested in learn
 ## Features
 
 ### v1: The minimal viable website
+
 (that I can deploy and be excited about)
 
 - [ ] The minimal scope for v1 is 4 pages: (1) the home page, with a map showing libraries near you or, failing location services, a default view. Below, a list of those same libraries. Clicking on any takes you to the page for that library. To the right, recent transactions in that bounding box. (2) The library page, displaying its books and the UI to check in, check out, and reconcile. (3) The profile page (4) a page with shortcuts to view the lending libraries around a particular city or other place.
