@@ -46,7 +46,7 @@ At the moment, I'm a systems programmer, professionally. I'm interested in learn
 
 - [ ] Users can authenticate themselves with OpenStreetMap. Session management?
 - [ ] Operations on a library's metadata must be authenticated, because they're going back to Open Street Map, eventually, and to prevent vandalism. This provides an opportunity to add additional library metadata that OSM can benefit from. `name` and `description` are already there, and `location` for `node`s. `brand` is not yet.
-- [ ] Users can view the edit history of a library's metadata and its inventory. And restore the library's metadata to prior version. Its inventory can be reconciled at any point.
+- [ ] Users can view the edit history of a library's metadata and its inventory. And restore the library's metadata to a prior version. Its inventory can be reconciled at any point.
 - [ ] Users can enter repairs required for a library.
 - [ ] Users can check in and out by scanning the barcode that encodes the ISBN with their camera.
 - [ ] Deduplication of books without ISBNs, like zines. At the very least book search.
