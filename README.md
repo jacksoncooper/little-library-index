@@ -28,7 +28,8 @@ At the moment, I'm a systems programmer, professionally. I'm interested in learn
 
 ## Features
 
-### v1: The minimal viable product
+### v1: The minimal viable website
+(that I can deploy and be excited about)
 
 - [ ] The minimal scope for v1 is 4 pages: (1) the home page, with a map showing libraries near you or, failing location services, a default view. Below, a list of those same libraries. Clicking on any takes you to the page for that library. To the right, recent transactions in that bounding box. (2) The library page, displaying its books and the UI to check in, check out, and reconcile. (3) The profile page (4) a page with shortcuts to view the lending libraries around a particular city or other place.
 - [ ] Users can add lending libraries.
@@ -39,30 +40,41 @@ At the moment, I'm a systems programmer, professionally. I'm interested in learn
 - [ ] The list of libraries is paginated. Panning the map will update a URL parameter with a bounding box, and update the library list to be equivalent to what you would see during a page refresh.
 - [ ] The initial set of libraries is seeded from the Open Street Map contributors.
 - [ ] A hard-coded page of cities to give non-JS users a path to view libraries at their location. Each entry in this page is an anchor to a friendly URL like `?city=chicago`. My server will translate that to an HTTP redirect to the home page with a reasonable bounding box. It would be awesome for these URLs to be user-contributed in the web application, but for now, GitHub will suffice.
+- [ ] Users can mark a library as retired, which will remove it from the home page, but it will still be accessible by its permanent URL code.
 
-### v2
+### v1.5: The minimum website for actual people
 
-- [ ] Users can authenticate with Google. Session management strategy?
+- [ ] Users can authenticate themselves with OpenStreetMap. Session management?
+- [ ] Operations on a library's metadata must be authenticated, because they're going back to Open Street Map, eventually, and to prevent vandalism. This provides an opportunity to add additional library metadata that OSM can benefit from. `name` and `description` are already there, and `location` for `node`s. `brand` is not yet.
+- [ ] Users can view the edit history of a library's metadata and its inventory. And restore the library's metadata to prior version. Its inventory can be reconciled at any point.
+- [ ] Users can enter repairs required for a library.
 - [ ] Users can check in and out by scanning the barcode that encodes the ISBN with their camera.
+- [ ] Deduplication of books without ISBNs, like zines. At the very least book search.
+- [ ] JavaScript-enabled interaction for a nicer UI.
+
+### v2: A good open-source member
+
 - [ ] Little Library Index will contribute lending libraries back to Open Street Map.
-- [ ] Users can upload an image of lending libraries.
-- [ ] Server-side drafts of new libraries, so user progress is saved automatically. Independent of authentication.
-- [ ] Deduplication of books without ISBNs, like zines.
-- [ ] Localization strategy? ISO 639-2 language code for each book.
 - [ ] Self host cover images for books without ISBN codes. Especially for things like zines.
-- [ ] ISO 639.3 language support.
-- [ ] Support libraries that aren't geometric points, like OSM ways.
 - [ ] Support searching for libraries by naming a location, and get a reasonable bounding box for that location, with a drop-down to resolve ambiguous locations, e.g., San Francisco, CA versus San Francisco, Agusan del Sur. v1 has an inflexible hard-coded dropdown with pretty URL parameter names. This is the generalization of that feature.
 
-### v3
+### In the future
+
+- [ ] Users can upload an image of lending libraries.
+- [ ] Server-side drafts of new libraries, so user progress is saved automatically. Independent of authentication.
+- [ ] Localization strategy? ISO 639-2 language code for each book.
+- [ ] ISO 639.3 language support.
+- [ ] Support libraries that aren't geometric points, like OSM ways.
+
+### Long term features
 
 - [ ] Users can acquire a code, or purchase a sticker with a barcode, that allows a book to be tracked through the lending library network. Maybe they can participate in a conversation with only folks who have encountered that particular book.
 - [ ] Users gain points for being librarians. My friend suggested that maybe they can decorate the virtual representation of the lending libraries, e.g., with stickers. Or maybe, you unlock the ability to get notified if there's a particular book deposited.
 
 ## Housekeeping
 
-- [ ] You need a linter
-- [ ] You need a reproducible Postgres environment. Learn containerization
+- [x] A linter
+- [ ] A reproducible Postgres environment. Learn containerization
 
 ## `bun create hono@latest`
 
