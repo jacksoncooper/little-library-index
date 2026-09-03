@@ -1,8 +1,8 @@
 import { SQL } from 'bun';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { Book, createBook, NewBook } from '../src/database/books';
-import { assertColumn, assertRowCount, Row } from '../src/database/types';
+import { Book, createBook, NewBook, rowToBook } from '../src/database/books';
+import { assertRowCount, Row, WithPrimaryKey } from '../src/database/types';
 import { createUser } from '../src/database/users';
 import {
   createTestDatabase,
@@ -68,57 +68,16 @@ describe('createBook()', () => {
       };
 
       const newBookId = await createBook(db, newBook);
-      const expectedBook: Book = {
+      const expectedBook: WithPrimaryKey<Book> = {
         ...newBook,
+        id: newBookId,
         version: 1,
         lastEdited: null,
       };
 
       const rows = await readBooks(db);
       assertRowCount(rows, 1);
-
-      const bookInDb = rows[0];
-      assertColumn(bookInDb, 'id', 'number');
-      assertColumn(bookInDb, 'created_at', Date);
-      assertColumn(bookInDb, 'created_by', 'number');
-      assertColumn(bookInDb, 'version', 'number');
-      assertColumn(bookInDb, 'last_edited_at', Date, true);
-      assertColumn(bookInDb, 'last_edited_by', 'number', true);
-      assertColumn(bookInDb, 'url_id', 'string');
-      assertColumn(bookInDb, 'open_library_work_id', 'string', true);
-      assertColumn(bookInDb, 'open_library_edition_id', 'string');
-      assertColumn(bookInDb, 'open_library_author_id', 'string', true);
-      assertColumn(bookInDb, 'title', 'string');
-      assertColumn(bookInDb, 'author', 'string', true);
-      assertColumn(bookInDb, 'iso_639_2', 'string', true);
-      assertColumn(bookInDb, 'publisher', 'string', true);
-      assertColumn(bookInDb, 'publish_date', 'string', true);
-      assertColumn(bookInDb, 'description', 'string', true);
-
-      expect(bookInDb.last_edited_at).toBeNull();
-      expect(bookInDb.last_edited_by).toBeNull();
-
-      expect(newBookId).toEqual(bookInDb.id);
-      expect(expectedBook).toEqual({
-        urlId: bookInDb.url_id,
-        created: {
-          at: bookInDb.created_at,
-          by: bookInDb.created_by,
-        },
-        openLibraryId: {
-          workId: bookInDb.open_library_work_id,
-          editionId: bookInDb.open_library_edition_id,
-          authorId: bookInDb.open_library_author_id,
-        },
-        version: bookInDb.version,
-        lastEdited: null,
-        title: bookInDb.title,
-        author: bookInDb.author,
-        language: bookInDb.iso_639_2,
-        publisher: bookInDb.publisher,
-        publishDate: bookInDb.publish_date,
-        description: bookInDb.description,
-      });
+      expect(expectedBook).toEqual(rowToBook(rows[0]));
     }));
 
   test('insert a new book without an Open Library ID', () =>
@@ -142,56 +101,15 @@ describe('createBook()', () => {
       };
 
       const newBookId = await createBook(db, newBook);
-      const expectedBook: Book = {
+      const expectedBook: WithPrimaryKey<Book> = {
         ...newBook,
+        id: newBookId,
         version: 1,
         lastEdited: null,
       };
 
       const rows = await readBooks(db);
       assertRowCount(rows, 1);
-
-      const bookInDb = rows[0];
-      assertColumn(bookInDb, 'id', 'number');
-      assertColumn(bookInDb, 'created_at', Date);
-      assertColumn(bookInDb, 'created_by', 'number');
-      assertColumn(bookInDb, 'version', 'number');
-      assertColumn(bookInDb, 'last_edited_at', Date, true);
-      assertColumn(bookInDb, 'last_edited_by', 'number', true);
-      assertColumn(bookInDb, 'url_id', 'string');
-      assertColumn(bookInDb, 'open_library_work_id', 'string', true);
-      assertColumn(bookInDb, 'open_library_edition_id', 'string');
-      assertColumn(bookInDb, 'open_library_author_id', 'string', true);
-      assertColumn(bookInDb, 'title', 'string');
-      assertColumn(bookInDb, 'author', 'string', true);
-      assertColumn(bookInDb, 'iso_639_2', 'string', true);
-      assertColumn(bookInDb, 'publisher', 'string', true);
-      assertColumn(bookInDb, 'publish_date', 'string', true);
-      assertColumn(bookInDb, 'description', 'string', true);
-
-      expect(bookInDb.open_library_work_id).toBeNull();
-      expect(bookInDb.open_library_edition_id).toBeNull();
-      expect(bookInDb.open_library_author_id).toBeNull();
-
-      expect(bookInDb.last_edited_at).toBeNull();
-      expect(bookInDb.last_edited_by).toBeNull();
-
-      expect(newBookId).toEqual(bookInDb.id);
-      expect(expectedBook).toEqual({
-        urlId: bookInDb.url_id,
-        created: {
-          at: bookInDb.created_at,
-          by: bookInDb.created_by,
-        },
-        openLibraryId: null,
-        version: bookInDb.version,
-        lastEdited: null,
-        title: bookInDb.title,
-        author: bookInDb.author,
-        language: bookInDb.iso_639_2,
-        publisher: bookInDb.publisher,
-        publishDate: bookInDb.publish_date,
-        description: bookInDb.description,
-      });
+      expect(expectedBook).toEqual(rowToBook(rows[0]));
     }));
 });

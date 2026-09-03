@@ -35,14 +35,12 @@ CREATE TABLE libraries (
   -- The time the web server receives the request to create the library. I can
   -- display something nifty and hip with this value, like "est. April 2026".
   -- This isn't the time at which the library was physically constructed.
-  -- TODO: No schema-level constraint that these are set together!
   created_at                   timestamp with time zone NOT NULL,
   created_by                   integer REFERENCES users (id) NOT NULL,
   -- For v1, we're tracking the handle and time of the last modification to
   -- the database. In the future for v2, I'd like a full edit history of
   -- libraries to restore vandalism.
   version                      integer NOT NULL DEFAULT 1,
-  -- TODO: No schema-level constraint that these are set together!
   last_edited_at               timestamp with time zone,
   last_edited_by               integer REFERENCES users (id),
   url_id                       url_id UNIQUE NOT NULL,
@@ -58,9 +56,13 @@ CREATE TABLE libraries (
 UNIQUE NULLS DISTINCT (
   open_street_map_element_type, open_street_map_element_id
 ),
-CONSTRAINT open_street_map_ids_have_element_id
-  CHECK(
+CONSTRAINT open_street_map_columns_are_jointly_nullable
+  CHECK (
     (open_street_map_element_type IS NULL) = (open_street_map_element_id IS NULL)
+  ),
+CONSTRAINT last_edited_columns_are_jointly_nullable
+  CHECK (
+    (last_edited_at IS NULL) = (last_edited_by IS NULL)
   )
 );
 
@@ -68,14 +70,12 @@ CONSTRAINT open_street_map_ids_have_element_id
 
 CREATE TABLE books (
   id                      serial PRIMARY KEY,
-  -- TODO: No schema-level constraint that these are set together!
   created_at              timestamp with time zone NOT NULL,
   created_by              integer REFERENCES users (id) NOT NULL,
   -- For v1, we're tracking the handle and time of the last modification to
   -- the database. In the future for v2, I'd like a full edit history of books
   -- to restore vandalism.
   version                 integer NOT NULL DEFAULT 1,
-  -- TODO: No schema-level constraint that these are set together!
   last_edited_at          timestamp with time zone,
   last_edited_by          integer REFERENCES users (id),
   url_id                  url_id UNIQUE NOT NULL,
@@ -107,6 +107,10 @@ CONSTRAINT open_library_ids_have_edition
     AND
       -- "If there is an author ID, then there is an edition ID."
       NOT (open_library_author_id IS NOT NULL AND open_library_edition_id IS NULL)
+  ),
+CONSTRAINT last_edited_columns_are_jointly_nullable
+  CHECK (
+    (last_edited_at IS NULL) = (last_edited_by IS NULL)
   )
 );
 
