@@ -140,3 +140,33 @@ export async function createBook(
   assertColumn(result[0], 'id', 'number');
   return result[0].id;
 }
+
+export async function readBookByUrlId(
+  connection: SQL,
+  urlId: string,
+): Promise<WithPrimaryKey<Book> | null> {
+  const rows = await connection<Row[]>`
+    SELECT
+      id,
+      created_at, created_by,
+      version, last_edited_at, last_edited_by,
+      url_id,
+      open_library_work_id, open_library_edition_id, open_library_author_id,
+      title,
+      author,
+      iso_639_2,
+      publisher,
+      publish_date,
+      description
+    FROM books
+    WHERE url_id = ${urlId}
+  `;
+
+  if (rows.length < 1) {
+    return null;
+  }
+  assertRowCount(rows, 1); // The `url_id` column is unique.
+
+  const row = rows[0];
+  return rowToBook(row);
+}
