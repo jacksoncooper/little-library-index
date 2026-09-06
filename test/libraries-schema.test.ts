@@ -946,8 +946,6 @@ describe('editLibrary()', () => {
         title: 'Only Agatha Christie books',
         description: 'If you put something else in here I will find you 🔪',
         version: library!.version,
-        lastEditedAt: new Date(Date.UTC(2026, 7, 27, 9, 57, 0)),
-        lastEditedBy: jacksonId,
       };
 
       const result = await editLibrary(db, editedLibrary, {
@@ -958,6 +956,8 @@ describe('editLibrary()', () => {
       expect(result).not.toBeNull();
       expect(result).toEqual({
         ...editedLibrary,
+        lastEditedAt: new Date(Date.UTC(2026, 7, 27, 9, 57, 0)),
+        lastEditedBy: jacksonId,
         version: library!.version + 1,
       });
     }));

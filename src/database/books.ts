@@ -36,6 +36,9 @@ export type NewBook = {
 
 export type Book = Versioned<NewBook>;
 
+type EditableBookProperties =
+  'title' | 'author' | 'language' | 'publisher' | 'publishDate' | 'description';
+
 export function rowToBook(row: Row): WithPrimaryKey<Book> {
   assertColumn(row, 'id', 'number');
   assertColumn(row, 'created_at', Date);
@@ -169,4 +172,53 @@ export async function readBookByUrlId(
 
   const row = rows[0];
   return rowToBook(row);
+}
+
+export async function editBook(
+  connection: SQL,
+  book: Pick<Book, EditableBookProperties | 'urlId' | 'version'>,
+  lastEdited: UserAttribution,
+): Promise<WithPrimaryKey<Book> | null> {
+  const rows = await connection<Row[]>`
+    UPDATE books
+    SET
+      version = ${book.version + 1},
+      last_edited_at = ${lastEdited.at},
+      last_edited_by = ${lastEdited.by},
+      title = ${book.title},
+      author = ${book.author},
+      iso_639_2 = ${book.language},
+      publisher = ${book.publisher},
+      publish_date = ${book.publishDate},
+      description = ${book.description}
+    WHERE
+      url_id = ${book.urlId} AND version = ${book.version}
+        -- The presence of an author ID or work ID imply the edition ID. So
+        -- we only need to check for the edition ID. Books with Open Library
+        -- IDs are synchronized with Open Library and cannot be edited, say,
+        -- like a zine can.
+        AND open_library_edition_id IS NULL
+    RETURNING
+      id,
+      created_at, created_by,
+      version, last_edited_at, last_edited_by,
+      url_id,
+      open_library_work_id, open_library_edition_id, open_library_author_id,
+      title,
+      author,
+      iso_639_2,
+      publisher,
+      publish_date,
+      description;
+  `;
+
+  // This early return may look redundant, but it's not. If the update succeeds,
+  // it's possible that a subsequent update could commit before we have the
+  // opportunity to read the updated value.
+  if (rows.length === 1) {
+    const row = rows[0];
+    return rowToBook(row);
+  }
+
+  return await readBookByUrlId(connection, book.urlId);
 }

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
   Book,
   createBook,
+  editBook,
   NewBook,
   readBookByUrlId,
   rowToBook,
@@ -37,8 +38,8 @@ afterEach(async () =>
 async function writeBookWithoutOpenLibraryId(
   connection: SQL,
   createdBy: number,
-): Promise<Row[]> {
-  return connection`
+): Promise<{ id: number; urlId: string }> {
+  const rows = await connection<Row[]>`
     INSERT INTO books (
       created_at, created_by,
       version, last_edited_at, last_edited_by,
@@ -64,14 +65,21 @@ async function writeBookWithoutOpenLibraryId(
     )
     RETURNING id, url_id;
   `;
+  assertRowCount(rows, 1);
+  assertColumn(rows[0], 'id', 'number');
+  assertColumn(rows[0], 'url_id', 'string');
+  return {
+    id: rows[0].id,
+    urlId: rows[0].url_id,
+  };
 }
 
 async function writeBookWithOpenLibraryId(
   connection: SQL,
   createdBy: number,
   editedBy: number,
-): Promise<Row[]> {
-  return connection`
+): Promise<{ id: number; urlId: string }> {
+  const rows = await connection<Row[]>`
     INSERT INTO books (
       created_at, created_by,
       version, last_edited_at, last_edited_by,
@@ -97,6 +105,13 @@ async function writeBookWithOpenLibraryId(
     )
     RETURNING id, url_id;
   `;
+  assertRowCount(rows, 1);
+  assertColumn(rows[0], 'id', 'number');
+  assertColumn(rows[0], 'url_id', 'string');
+  return {
+    id: rows[0].id,
+    urlId: rows[0].url_id,
+  };
 }
 
 function readBooks(connection: SQL): Promise<Row[]> {
@@ -124,14 +139,13 @@ describe('readBookByUrlId()', () => {
       const jacksonId = await createUser(db, { handle: 'jackson' });
       const delaneyId = await createUser(db, { handle: 'delaney' });
 
-      const rows = await writeBookWithOpenLibraryId(db, jacksonId, delaneyId);
-      assertRowCount(rows, 1);
+      const bookIds = await writeBookWithOpenLibraryId(
+        db,
+        jacksonId,
+        delaneyId,
+      );
 
-      const bookIds = rows[0];
-      assertColumn(bookIds, 'id', 'number');
-      assertColumn(bookIds, 'url_id', 'string');
-
-      const book = await readBookByUrlId(db, bookIds.url_id);
+      const book = await readBookByUrlId(db, bookIds.urlId);
 
       expect(book).toEqual({
         id: bookIds.id,
@@ -163,14 +177,9 @@ describe('readBookByUrlId()', () => {
     withDatabaseConnection(testConnection.open(), async (db) => {
       const jacksonId = await createUser(db, { handle: 'jackson' });
 
-      const rows = await writeBookWithoutOpenLibraryId(db, jacksonId);
-      assertRowCount(rows, 1);
+      const bookIds = await writeBookWithoutOpenLibraryId(db, jacksonId);
 
-      const bookIds = rows[0];
-      assertColumn(bookIds, 'id', 'number');
-      assertColumn(bookIds, 'url_id', 'string');
-
-      const book = await readBookByUrlId(db, bookIds.url_id);
+      const book = await readBookByUrlId(db, bookIds.urlId);
 
       expect(book).toEqual({
         id: bookIds.id,
@@ -273,5 +282,129 @@ describe('createBook()', () => {
       const rows = await readBooks(db);
       assertRowCount(rows, 1);
       expect(expectedBook).toEqual(rowToBook(rows[0]));
+    }));
+});
+
+describe('editBook()', () => {
+  test('try to edit a current book with an Open Library ID', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const jacksonId = await createUser(db, { handle: 'jackson' });
+      const delaneyId = await createUser(db, { handle: 'delaney' });
+
+      const bookIds = await writeBookWithOpenLibraryId(
+        db,
+        jacksonId,
+        delaneyId,
+      );
+
+      const book = await readBookByUrlId(db, bookIds.urlId);
+      expect(book).not.toBeNull();
+
+      const editedBook = {
+        ...book!,
+        title: 'The Mocking Midsummer Woodjay',
+        author: 'Suzanne Collins',
+        version: book!.version,
+      };
+
+      const result = await editBook(db, editedBook, {
+        by: jacksonId,
+        at: new Date(Date.UTC(2026, 8, 5, 22, 40, 0)),
+      });
+
+      expect(result).not.toBeNull();
+      // A book with an Open Library ID cannot be edited.
+      expect(result).toEqual(book);
+    }));
+
+  test('edit a current book without an Open Library ID', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const jacksonId = await createUser(db, { handle: 'jackson' });
+      const delaneyId = await createUser(db, { handle: 'delaney' });
+
+      const bookIds = await writeBookWithoutOpenLibraryId(db, jacksonId);
+
+      const book = await readBookByUrlId(db, bookIds.urlId);
+      expect(book).not.toBeNull();
+
+      const editedBook = {
+        ...book!,
+        title: 'Techno Primitivism Issue 1: Anthropological Indexicality',
+        publishDate: 'MMXXIV',
+        version: book!.version,
+      };
+
+      const result = await editBook(db, editedBook, {
+        by: delaneyId,
+        at: new Date(Date.UTC(2026, 8, 5, 22, 40, 0)),
+      });
+
+      expect(result).not.toBeNull();
+      expect(result).toEqual({
+        ...editedBook,
+        lastEdited: {
+          at: new Date(Date.UTC(2026, 8, 5, 22, 40, 0)),
+          by: delaneyId,
+        },
+        version: book!.version + 1,
+      });
+    }));
+
+  test("edit a book that isn't current", () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const jacksonId = await createUser(db, { handle: 'jackson' });
+      const delaneyId = await createUser(db, { handle: 'delaney' });
+
+      const bookIds = await writeBookWithoutOpenLibraryId(db, jacksonId);
+
+      const book = await readBookByUrlId(db, bookIds.urlId);
+      expect(book).not.toBeNull();
+
+      // Oops! Someone beat Delaney to the update.
+      await db`
+        UPDATE books
+        SET version = ${book!.version + 1} WHERE url_id = ${book!.urlId}
+      `;
+
+      const editedBook = {
+        ...book!,
+        title: 'Techno Primitivism Issue 1: Anthropological Indexicality',
+        publishDate: 'MMXXIV',
+        version: book!.version,
+      };
+
+      const result = await editBook(db, editedBook, {
+        by: delaneyId,
+        at: new Date(Date.UTC(2026, 8, 5, 22, 40, 0)),
+      });
+
+      expect(result).not.toBeNull();
+      expect(result).toEqual({
+        ...book!,
+        version: book!.version + 1,
+      });
+    }));
+
+  test("edit a book that doesn't exist", () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const jacksonId = await createUser(db, { handle: 'jackson' });
+      const delaneyId = await createUser(db, { handle: 'delaney' });
+
+      const bookIds = await writeBookWithoutOpenLibraryId(db, jacksonId);
+
+      const book = await readBookByUrlId(db, bookIds.urlId);
+      expect(book).not.toBeNull();
+
+      const editedBook = {
+        ...book!,
+        urlId: 'f3ls3a',
+      };
+
+      const result = await editBook(db, editedBook, {
+        by: delaneyId,
+        at: new Date(Date.UTC(2026, 8, 5, 22, 40, 0)),
+      });
+
+      expect(result).toBeNull();
     }));
 });

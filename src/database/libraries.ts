@@ -501,8 +501,7 @@ export async function editLibrary(
       open_street_map_element_type = ${library.osmElementId.elementType},
       open_street_map_element_id = ${library.osmElementId.elementId}
     WHERE
-      url_id = ${library.urlId} AND
-      version = ${library.version}
+      url_id = ${library.urlId} AND version = ${library.version}
     RETURNING
       id,
       created_at, created_by,
@@ -512,7 +511,7 @@ export async function editLibrary(
       title,
       description,
       open_street_map_element_type,
-      open_street_map_element_id
+      open_street_map_element_id;
   `;
 
   // This early return may look redundant, but it's not. If the update succeeds,
