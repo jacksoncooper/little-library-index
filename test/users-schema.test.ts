@@ -36,7 +36,7 @@ function createUsers(connection: SQL): Promise<void> {
 function readUserByHandles(connection: SQL): Promise<Row[]> {
   return connection<Row[]>`
         SELECT * from users
-        ORDER BY users.id;
+        ORDER BY id;
     `;
 }
 

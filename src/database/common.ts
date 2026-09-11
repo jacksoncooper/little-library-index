@@ -24,3 +24,23 @@ export type Versioned<T> = T & {
   version: number;
   lastEdited: UserAttribution | null;
 };
+
+export type Result<T, E> =
+  | {
+      okay: true;
+      result: T;
+    }
+  | {
+      okay: false;
+      error: E;
+    };
+
+export const Result = {
+  okay<T, E>(result: T): Result<T, E> {
+    return { okay: true, result };
+  },
+
+  error<T, E>(error: E): Result<T, E> {
+    return { okay: false, error };
+  },
+};

@@ -313,10 +313,10 @@ export function splitAcrossAntiMeridian(
   ];
 }
 
-async function readLibraryTuplesByBoundingBox<T>(
+async function readLibraryRowsByBoundingBox<T>(
   // This function works on the `location` column of the `libraries` table, so
   // `librariesTuple` must include it.
-  libraryTuples: (db: SQL) => SQL.Query<unknown>,
+  libraryRows: (db: SQL) => SQL.Query<unknown>,
   whereConjunction: (db: SQL) => SQL.Query<unknown>,
   orderByClause: (db: SQL) => SQL.Query<unknown>,
   transform: (row: Row) => T,
@@ -333,7 +333,7 @@ async function readLibraryTuplesByBoundingBox<T>(
           ${b2.longitude[0]}, ${b2.latitude[0]},
           ${b2.longitude[1]}, ${b2.latitude[1]}, 4326))`;
   const rows = await connection<Row[]>`
-    ${libraryTuples(connection)}
+    ${libraryRows(connection)}
     FROM libraries
     WHERE
       -- This cast is interesting. Sonnet 5 discovered that PostGIS' &&
@@ -361,7 +361,7 @@ export function readPinsByBoundingBox(
   connection: SQL,
   ranges: BoundingBox,
 ): Promise<Pin[]> {
-  return readLibraryTuplesByBoundingBox(
+  return readLibraryRowsByBoundingBox(
     (db) => db`
     SELECT
       id,
@@ -436,7 +436,7 @@ export async function readLibrariesByBoundingBox(
     };
   }
 
-  const libraries = await readLibraryTuplesByBoundingBox(
+  const libraries = await readLibraryRowsByBoundingBox(
     (db) => db`
     SELECT
       id,

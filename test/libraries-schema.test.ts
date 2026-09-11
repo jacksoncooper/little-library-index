@@ -99,7 +99,7 @@ function readLibraries(connection: SQL): Promise<Row[]> {
       open_street_map_element_type,
       open_street_map_element_id
     FROM libraries
-    ORDER BY libraries.id;
+    ORDER BY id;
   `;
 }
 
@@ -925,6 +925,8 @@ describe('readLibrariesByBoundingBox()', () => {
     }));
 });
 
+// TODO: This suite should verify that `editLibrary` actually mutates the
+// database.
 describe('editLibrary()', () => {
   test('edit a current library', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {

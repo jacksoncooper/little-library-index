@@ -78,9 +78,9 @@ CREATE TABLE books (
   version                 integer NOT NULL DEFAULT 1,
   last_edited_at          timestamp with time zone,
   last_edited_by          integer REFERENCES users (id),
-  url_id                  url_id UNIQUE NOT NULL,
+  url_id                  url_id CONSTRAINT url_id_is_unique UNIQUE NOT NULL,
   open_library_work_id    text,
-  open_library_edition_id text UNIQUE,
+  open_library_edition_id text CONSTRAINT open_library_edition_id_is_unique UNIQUE,
   open_library_author_id  text,
   title                   text NOT NULL,
   author                  text,
@@ -96,6 +96,8 @@ CREATE TABLE books (
   --
   --  https://www.loc.gov/standards/iso639-2/php/code_list.php
   --
+  -- TODO: This needs a database constraint to the set of valid bibliographic
+  -- codes.
   iso_639_2               text,
   publisher               text,
   publish_date            text,
@@ -176,7 +178,7 @@ CREATE FUNCTION is_valid_isbn_13(isbn isbn_13) RETURNS boolean
 
 CREATE TABLE isbns (
   id            serial PRIMARY KEY,
-  isbn_13       isbn_13 UNIQUE NOT NULL CHECK (is_valid_isbn_13(isbn_13)),
+  isbn_13       isbn_13 CONSTRAINT isbn_13_is_unique UNIQUE NOT NULL CHECK (is_valid_isbn_13(isbn_13)),
   -- In what version was the ISBN written on the back cover of the book? All
   -- 10-digit ISBNs can be converted to 13-digit ISBNs.
   source_format isbn_version NOT NULL,
