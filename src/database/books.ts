@@ -412,6 +412,10 @@ export async function createBookWithIsbn(
   const maybeBook = await connection.begin<
     Result<WithPrimaryKey<Book>, BooksOrIsbnConflict>
   >(async (trans) => {
+    // An error creating the book means PostgreSQL was unable to execute the
+    // query. So `trans` is aborted, and subsequent operations on the
+    // transaction will fail with error 25P02, "in_failed_sql_transaction."
+    // When `trans` exits, the transaction is rolled back.
     const maybeBook = await createBookOrError(trans, book);
     if (!maybeBook.okay) {
       return Result.error({ table: 'books', conflict: maybeBook.error });

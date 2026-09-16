@@ -528,7 +528,7 @@ describe('editBook()', () => {
 });
 
 describe('createBookWithIsbn()', () => {
-  test("create a book with an ISBN that doesn't already exist", () =>
+  test('create a book with an ISBN', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
       const jacksonId = await createUser(db, { handle: 'jackson' });
 
@@ -551,6 +551,49 @@ describe('createBookWithIsbn()', () => {
       expect(isbnToBooksInDb).toHaveLength(1);
       expect(isbnToBooksInDb[0]).toEqual({
         id: isbnToBooksInDb[0].id,
+        isbn: {
+          isbn: '9781639734481',
+          sourceFormat: 'isbn_13',
+        },
+        bookId: booksInDb[0].id,
+      });
+    }));
+
+  test('create a book with an ISBN, but with an existing Open Library ID', () =>
+    withDatabaseConnection(testConnection.open(), async (db) => {
+      const jacksonId = await createUser(db, { handle: 'jackson' });
+      const delaneyId = await createUser(db, { handle: 'delaney' });
+
+      await writeBookWithOpenLibraryId(db, jacksonId, delaneyId);
+
+      const newBook = makeBookWithOpenLibraryId(
+        jacksonId,
+        // 'OL53273608M' is a different Open Library edition of the work
+        // https://openlibrary.org/works/OL37888263W. It has ISBN 9781526675217.
+        // For this test, we pretend this ISBN *also* refers to the edition
+        // 'OL51145909M'. Usually, when books have multiple ISBNs, it's because
+        // they've been printed with both 10- and 13-digit ISBNs.
+        'str4ng',
+        'OL51145909M',
+      );
+      const book = await createBookWithIsbn(
+        db,
+        { isbn: '9781526675217', sourceFormat: 'isbn_13' },
+        newBook,
+      );
+
+      const booksInDb = await readBooks(db);
+      expect(booksInDb).toHaveLength(1);
+      // A book with this Open Library ID already exists in the database, so
+      // `createBookWithIsbn` returns that record. The write of the 'str4ng'
+      // book should be aborted.
+      expect(book.urlId).not.toEqual('str4ng');
+      expect(book).toEqual(booksInDb[0]);
+
+      const isbnToBooksInDb = await readIsbns(db);
+      expect(isbnToBooksInDb).toHaveLength(1);
+      const { id, ...isbnToBook } = isbnToBooksInDb[0];
+      expect(isbnToBook).toEqual({
         isbn: {
           isbn: '9781639734481',
           sourceFormat: 'isbn_13',
