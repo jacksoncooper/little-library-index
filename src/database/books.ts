@@ -53,7 +53,11 @@ export enum BooksConstraint {
   OpenLibraryEditionIdConflict = 'open_library_edition_id_is_unique',
 }
 
-type BooksOrIsbnConflict =
+export enum IsbnsConstraint {
+  Isbn13Conflict = 'isbn_13_is_unique',
+}
+
+type BooksOrIsbnConstraint =
   | {
       table: 'books';
       conflict: BooksConstraint;
@@ -63,9 +67,17 @@ type BooksOrIsbnConflict =
       conflict: IsbnsConstraint;
     };
 
-export enum IsbnsConstraint {
-  Isbn13Conflict = 'isbn_13_is_unique',
+export enum CreateBookWithIsbnResult {
+  Okay = 'Okay',
+  UrlAlreadyExists = 'URL already exists',
+  IsbnAlreadyExists = 'ISBN already exists',
+  OpenLibraryIdAlreadyExists = 'Open Library ID already exists',
 }
+
+export type CreatedBookWithIsbn = {
+  book: WithPrimaryKey<Book>;
+  result: CreateBookWithIsbnResult;
+};
 
 export function rowToBook(row: Row): WithPrimaryKey<Book> {
   assertColumn(row, 'id', 'number');
@@ -408,9 +420,9 @@ export async function createBookWithIsbn(
   connection: SQL,
   isbn: Isbn13,
   book: NewBook,
-): Promise<WithPrimaryKey<Book>> {
+): Promise<CreatedBookWithIsbn> {
   const maybeBook = await connection.begin<
-    Result<WithPrimaryKey<Book>, BooksOrIsbnConflict>
+    Result<WithPrimaryKey<Book>, BooksOrIsbnConstraint>
   >(async (trans) => {
     // An error creating the book means PostgreSQL was unable to execute the
     // query. So `trans` is aborted, and subsequent operations on the
@@ -427,16 +439,30 @@ export async function createBookWithIsbn(
     return Result.okay(maybeBook.result);
   });
   if (maybeBook.okay) {
-    return maybeBook.result;
+    return { book: maybeBook.result, result: CreateBookWithIsbnResult.Okay };
   }
   if (maybeBook.error.table === 'books') {
-    return readBookByConflict(connection, book, maybeBook.error.conflict);
+    const existingBook = await readBookByConflict(
+      connection,
+      book,
+      maybeBook.error.conflict,
+    );
+    return {
+      book: existingBook,
+      result:
+        maybeBook.error.conflict === BooksConstraint.UrlIdConflict
+          ? CreateBookWithIsbnResult.UrlAlreadyExists
+          : CreateBookWithIsbnResult.OpenLibraryIdAlreadyExists,
+    };
   }
   const existingBook = await readBookByIsbn(connection, isbn.isbn);
   if (existingBook === null) {
     throw new QueryShapeError(`expect book with ISBN ${isbn.isbn} to exist`);
   }
-  return existingBook;
+  return {
+    book: existingBook,
+    result: CreateBookWithIsbnResult.IsbnAlreadyExists,
+  };
 }
 
 export function rowToIsbn(row: Row): WithPrimaryKey<IsbnToBook> {

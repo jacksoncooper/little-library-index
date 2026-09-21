@@ -5,6 +5,7 @@ import {
   Book,
   createBook,
   createBookWithIsbn,
+  CreateBookWithIsbnResult,
   editBook,
   IsbnToBook,
   NewBook,
@@ -545,7 +546,10 @@ describe('createBookWithIsbn()', () => {
 
       const booksInDb = await readBooks(db);
       expect(booksInDb).toHaveLength(1);
-      expect(book).toEqual(booksInDb[0]);
+      expect(book).toEqual({
+        book: booksInDb[0],
+        result: CreateBookWithIsbnResult.Okay,
+      });
 
       const isbnToBooksInDb = await readIsbns(db);
       expect(isbnToBooksInDb).toHaveLength(1);
@@ -587,8 +591,11 @@ describe('createBookWithIsbn()', () => {
       // A book with this Open Library ID already exists in the database, so
       // `createBookWithIsbn` returns that record. The write of the 'str4ng'
       // book should be aborted.
-      expect(book.urlId).not.toEqual('str4ng');
-      expect(book).toEqual(booksInDb[0]);
+      expect(book.book.urlId).not.toEqual('str4ng');
+      expect(book).toEqual({
+        book: booksInDb[0],
+        result: CreateBookWithIsbnResult.OpenLibraryIdAlreadyExists,
+      });
 
       const isbnToBooksInDb = await readIsbns(db);
       expect(isbnToBooksInDb).toHaveLength(1);
@@ -630,8 +637,11 @@ describe('createBookWithIsbn()', () => {
       // A book with this ISBN already exists in the database, so
       // `createBookWithIsbn` returns that record. The write of the 'str4ng'
       // book should be aborted.
-      expect(book.urlId).not.toEqual('str4ng');
-      expect(book).toEqual(booksInDb[0]);
+      expect(book.book.urlId).not.toEqual('str4ng');
+      expect(book).toEqual({
+        book: booksInDb[0],
+        result: CreateBookWithIsbnResult.IsbnAlreadyExists,
+      });
 
       const isbnToBooksInDb = await readIsbns(db);
       expect(isbnToBooksInDb).toHaveLength(1);
