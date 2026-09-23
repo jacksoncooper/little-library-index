@@ -205,7 +205,11 @@ CREATE TABLE inventory_events (
   -- Whether the user wants the transaction to be visible in the live feed.
   visible        boolean NOT NULL default true,
   -- Whether the user wants their handle to be visible in the transaction.
-  handle_visible boolean NOT NULL default false
+  handle_is_visible boolean NOT NULL default false,
+CONSTRAINT check_in_has_positive_delta
+  CHECK (NOT (type = 'check_in' AND NOT delta > 0)),
+CONSTRAINT check_out_has_negative_delta
+  CHECK (NOT (type = 'check_out' AND NOT delta < 0))
 );
 
 CREATE INDEX libraries_by_location ON libraries USING GIST (

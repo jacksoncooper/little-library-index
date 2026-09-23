@@ -22,7 +22,7 @@ export type WithPrimaryKey<T> = { id: number } & T;
 // -- https://bun.com/docs/runtime/sql#query-results
 export type Row = { [column: string]: unknown };
 
-type Primitive = 'string' | 'number' | 'bigint';
+type Primitive = 'string' | 'number' | 'bigint' | 'boolean';
 type Constructor = ArrayConstructor | DateConstructor;
 type ColumnType = Primitive | Constructor;
 
@@ -35,7 +35,9 @@ type TypeOfType<T extends ColumnType> = T extends Primitive
     ? string
     : T extends 'number'
       ? number
-      : bigint
+      : T extends 'bigint'
+        ? bigint
+        : boolean
   : T extends Constructor
     ? InstanceType<T>
     : never;

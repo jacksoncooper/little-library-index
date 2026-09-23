@@ -61,6 +61,7 @@ export const postgresError = {
 export function rejectsWithPostgresError<T>(
   query: Promise<T>,
   errno: string,
+  constraint?: string,
 ): Promise<string> {
   return query.then(
     () => {
@@ -70,6 +71,9 @@ export function rejectsWithPostgresError<T>(
     (e) => {
       expect(e).toBeInstanceOf(SQL.PostgresError);
       expect((e as SQL.PostgresError).errno).toBe(errno);
+      if (constraint !== undefined) {
+        expect((e as SQL.PostgresError).constraint).toBe(constraint);
+      }
       return errno;
     },
   );

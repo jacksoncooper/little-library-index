@@ -31,6 +31,7 @@ import {
   rejectsWithPostgresError,
   withDatabaseConnection,
 } from './connection';
+import { writeLibraries } from './libraries-fixtures';
 
 const testConnection = makeConnection();
 
@@ -55,37 +56,6 @@ node
 out;
 */
 
-function writeLibraries(connection: SQL): Promise<Row[]> {
-  return connection<Row[]>`
-        WITH new_user AS (
-            INSERT INTO users (handle)
-            VALUES ('mapadu')
-            RETURNING id
-        )
-        INSERT INTO libraries (
-            created_at, created_by,
-            version, last_edited_at, last_edited_by,
-            url_id,
-            location,
-            title, description,
-            open_street_map_element_type,
-            open_street_map_element_id
-        )
-        SELECT
-            '2023-04-04 01:00:07 UTC', new_user.id,
-            2, '2023-04-04 13:09:26 UTC', new_user.id,
-            -- This is not a real URL ID.
-            'ao6wm2',
-            ST_Point(-122.4781917, 37.7774749, 4326)::geography,
-            null,
-            null,
-            'node',
-            10783380181
-        FROM new_user
-        RETURNING id, created_by, url_id;
-    `;
-}
-
 function readLibraries(connection: SQL): Promise<Row[]> {
   return connection<Row[]>`
     SELECT
@@ -106,28 +76,22 @@ function readLibraries(connection: SQL): Promise<Row[]> {
 describe('readLibraryByUrlId()', () => {
   test('retrieve library by URL ID', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const rows = await writeLibraries(db);
-      assertRowCount(rows, 1);
-      const row = rows[0];
-      assertColumn(row, 'id', 'number');
-      assertColumn(row, 'created_by', 'number');
-      assertColumn(row, 'url_id', 'string');
-
-      const library = await readLibraryByUrlId(db, row.url_id);
+      const libraryIds = await writeLibraries(db);
+      const library = await readLibraryByUrlId(db, libraryIds.urlId);
 
       expect(library).not.toBe(null);
 
-      expect(library!.id).toEqual(row.id);
+      expect(library!.id).toEqual(libraryIds.id);
       expect(library!.createdAt).toEqual(
         new Date(Date.UTC(2023, 3, 4, 1, 0, 7)),
       );
-      expect(library!.createdBy).toEqual(row.created_by);
+      expect(library!.createdBy).toEqual(libraryIds.createdBy);
       expect(library!.version).toEqual(2);
       expect(library!.lastEditedAt).toEqual(
         new Date(Date.UTC(2023, 3, 4, 13, 9, 26)),
       );
-      expect(library!.lastEditedBy).toEqual(row.created_by);
-      expect(library!.urlId).toEqual(row.url_id);
+      expect(library!.lastEditedBy).toEqual(libraryIds.createdBy);
+      expect(library!.urlId).toEqual(libraryIds.urlId);
       expect(library!.location).toEqual({
         latitude: 37.7774749,
         longitude: -122.4781917,
@@ -930,13 +894,10 @@ describe('readLibrariesByBoundingBox()', () => {
 describe('editLibrary()', () => {
   test('edit a current library', () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const rows = await writeLibraries(db);
-      assertRowCount(rows, 1);
-      const row = rows[0];
-      assertColumn(row, 'url_id', 'string');
+      const libraryIds = await writeLibraries(db);
 
       const jacksonId = await createUser(db, { handle: 'jackson' });
-      const library = await readLibraryByUrlId(db, row.url_id);
+      const library = await readLibraryByUrlId(db, libraryIds.urlId);
       expect(library).not.toBeNull();
 
       const editedLibrary = {
@@ -966,13 +927,10 @@ describe('editLibrary()', () => {
 
   test("edit a library that isn't current", () =>
     withDatabaseConnection(testConnection.open(), async (db) => {
-      const rows = await writeLibraries(db);
-      assertRowCount(rows, 1);
-      const row = rows[0];
-      assertColumn(row, 'url_id', 'string');
+      const libraryIds = await writeLibraries(db);
 
       const jacksonId = await createUser(db, { handle: 'jackson' });
-      const library = await readLibraryByUrlId(db, row.url_id);
+      const library = await readLibraryByUrlId(db, libraryIds.urlId);
       expect(library).not.toBeNull();
 
       // Oops! Someone beat Jackson to the update.
